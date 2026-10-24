@@ -14,6 +14,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/raulnid/herakles/internal/modules/payload"
 	"github.com/raulnid/herakles/internal/vars"
 )
 
@@ -22,13 +23,16 @@ type Body struct {
 	JSON      any             `yaml:"json"`
 	Text      *string         `yaml:"text"`
 	Multipart map[string]Part `yaml:"multipart"`
+	Payload   *payload.Spec   `yaml:"payload"` // generated file sent as the raw body
 }
 
-// Part is one multipart field: a plain value, or a file when Filename is set.
+// Part is one multipart field: a plain value, or a file when Filename or
+// Payload is set.
 type Part struct {
-	Value       string `yaml:"value"`
-	Filename    string `yaml:"filename"`
-	ContentType string `yaml:"content_type"`
+	Value       string        `yaml:"value"`
+	Filename    string        `yaml:"filename"`
+	ContentType string        `yaml:"content_type"`
+	Payload     *payload.Spec `yaml:"payload"`
 }
 
 func (p *Part) UnmarshalYAML(n *yaml.Node) error {
@@ -44,24 +48,57 @@ func (b *Body) validate() error {
 		return nil
 	}
 	n := 0
-	for _, set := range []bool{b.JSON != nil, b.Text != nil, b.Multipart != nil} {
+	for _, set := range []bool{b.JSON != nil, b.Text != nil, b.Multipart != nil, b.Payload != nil} {
 		if set {
 			n++
 		}
 	}
+	var errs []error
 	if n > 1 {
-		return errors.New("body: set only one of json, text or multipart")
+		errs = append(errs, errors.New("body: set only one of json, text, multipart or payload"))
 	}
-	return nil
+	for name, p := range b.Multipart {
+		if p.Payload != nil && p.Value != "" {
+			errs = append(errs, fmt.Errorf("body multipart %q: set value or payload, not both", name))
+		}
+	}
+	for _, sp := range b.payloads() {
+		// An empty kind is a template, checked when it renders.
+		if sp.Kind != "" && !payload.Known(sp.Kind) {
+			errs = append(errs, fmt.Errorf("body: unknown payload kind %q", sp.Kind))
+		}
+	}
+	return errors.Join(errs...)
 }
 
-func (b *Body) uploads() bool { return false }
+func (b *Body) payloads() []*payload.Spec {
+	if b == nil {
+		return nil
+	}
+	var out []*payload.Spec
+	if b.Payload != nil {
+		out = append(out, b.Payload)
+	}
+	for _, name := range sortedKeys(b.Multipart) {
+		if p := b.Multipart[name].Payload; p != nil {
+			out = append(out, p)
+		}
+	}
+	return out
+}
 
-// outputNames and outputs are the variables the body publishes, such as a
-// generated payload's checksum.
-func (b *Body) outputNames() []string { return nil }
+func (b *Body) uploads() bool { return len(b.payloads()) > 0 }
 
-func (b *Body) outputs() map[string]vars.Value { return nil }
+// outputNames are the variables the body publishes: each payload's as.
+func (b *Body) outputNames() []string {
+	var out []string
+	for _, sp := range b.payloads() {
+		if sp.As != "" {
+			out = append(out, sp.As)
+		}
+	}
+	return out
+}
 
 // reqBody counts what the transport reads, for the upload rate. The
 // transport reads it from its own goroutine, hence the mutex.
@@ -70,6 +107,7 @@ type reqBody struct {
 	length  int64 // -1 when unknown (streamed)
 	ctype   string
 	uploads bool
+	streams map[*payload.Spec]*payload.Stream
 
 	mu    sync.Mutex
 	n     int64
@@ -93,53 +131,92 @@ func (b *reqBody) stats() (int64, time.Time) {
 	return b.n, b.first
 }
 
-// Close stops a streaming producer when the transport gives up early.
+// Close stops streaming producers when the transport gives up early.
 func (b *reqBody) Close() error {
+	for _, st := range b.streams {
+		st.Close()
+	}
 	if c, ok := b.r.(io.Closer); ok {
 		return c.Close()
 	}
 	return nil
 }
 
+// outputs returns {sha256, size} for every payload with an as name. It fails
+// if the server answered before the payload was fully sent.
+func (b *reqBody) outputs() (map[string]vars.Value, error) {
+	out := map[string]vars.Value{}
+	for sp, st := range b.streams {
+		if sp.As == "" {
+			continue
+		}
+		sum, size, complete := st.Sum()
+		if !complete {
+			return nil, fmt.Errorf("payload %q: upload incomplete, %d bytes sent", sp.As, size)
+		}
+		out[sp.As] = vars.Value{Raw: map[string]any{"sha256": sum, "size": size}}
+	}
+	return out, nil
+}
+
 func (b *Body) build() (*reqBody, error) {
+	rb := &reqBody{streams: map[*payload.Spec]*payload.Stream{}}
+	for _, sp := range b.payloads() {
+		st, err := sp.Open()
+		if err != nil {
+			rb.Close()
+			return nil, err
+		}
+		rb.streams[sp] = st
+	}
 	switch {
 	case b == nil:
-		return &reqBody{}, nil
 	case b.JSON != nil:
 		data, err := json.Marshal(b.JSON)
 		if err != nil {
 			return nil, fmt.Errorf("body json: %w", err)
 		}
-		return &reqBody{r: bytes.NewReader(data), length: int64(len(data)), ctype: "application/json"}, nil
+		rb.r, rb.length, rb.ctype = bytes.NewReader(data), int64(len(data)), "application/json"
 	case b.Text != nil:
-		return &reqBody{r: strings.NewReader(*b.Text), length: int64(len(*b.Text)), ctype: "text/plain; charset=utf-8"}, nil
+		rb.r, rb.length, rb.ctype = strings.NewReader(*b.Text), int64(len(*b.Text)), "text/plain; charset=utf-8"
+	case b.Payload != nil:
+		// shortcut: payloads are sent chunked, add Content-Length for exact-size kinds if a server rejects chunked uploads.
+		rb.r, rb.length, rb.ctype, rb.uploads = rb.streams[b.Payload], -1, b.Payload.ContentType(), true
 	case b.Multipart != nil:
 		pr, pw := io.Pipe()
 		mw := multipart.NewWriter(pw)
-		go func() { pw.CloseWithError(b.writeParts(mw)) }()
-		return &reqBody{r: pr, length: -1, ctype: mw.FormDataContentType(), uploads: b.uploads()}, nil
+		go func() { pw.CloseWithError(b.writeParts(mw, rb.streams)) }()
+		rb.r, rb.length, rb.ctype, rb.uploads = pr, -1, mw.FormDataContentType(), b.uploads()
 	}
-	return &reqBody{}, nil
+	return rb, nil
 }
 
 // writeParts streams the parts in name order, so requests are reproducible.
-func (b *Body) writeParts(mw *multipart.Writer) error {
+func (b *Body) writeParts(mw *multipart.Writer, streams map[*payload.Spec]*payload.Stream) error {
 	for _, name := range sortedKeys(b.Multipart) {
 		p := b.Multipart[name]
+		filename, ctype := p.Filename, p.ContentType
+		if p.Payload != nil {
+			filename, ctype = orDefault(filename, p.Payload.Filename()), orDefault(ctype, p.Payload.ContentType())
+		}
 		var w io.Writer
 		var err error
-		if p.Filename == "" {
+		if filename == "" {
 			w, err = mw.CreateFormField(name)
 		} else {
 			h := textproto.MIMEHeader{}
-			h.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q; filename=%q`, name, p.Filename))
-			h.Set("Content-Type", orDefault(p.ContentType, "application/octet-stream"))
+			h.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q; filename=%q`, name, filename))
+			h.Set("Content-Type", orDefault(ctype, "application/octet-stream"))
 			w, err = mw.CreatePart(h)
 		}
 		if err != nil {
 			return err
 		}
-		if _, err := io.WriteString(w, p.Value); err != nil {
+		var src io.Reader = strings.NewReader(p.Value)
+		if p.Payload != nil {
+			src = streams[p.Payload]
+		}
+		if _, err := io.Copy(w, src); err != nil {
 			return err
 		}
 	}

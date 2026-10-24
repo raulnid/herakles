@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptrace"
 	"slices"
@@ -151,12 +152,15 @@ func (m Module) Run(ctx context.Context, cfg any, env *module.Env) module.Result
 		res.Err = fmt.Errorf("reading response body: %w", readErr)
 		return res
 	}
-	res.Captured, res.Err = c.check(resp, rb)
-	if res.Err == nil {
-		for name, v := range c.Body.outputs() {
-			res.Captured[name] = v
-		}
+	if res.Captured, res.Err = c.check(resp, rb); res.Err != nil {
+		return res
 	}
+	outs, err := body.outputs()
+	if err != nil {
+		res.Err = err
+		return res
+	}
+	maps.Copy(res.Captured, outs)
 	return res
 }
 

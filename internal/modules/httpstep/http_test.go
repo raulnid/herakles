@@ -5,10 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -265,7 +267,7 @@ capture:
   bad: {jsonpath: "$[?"}
 assert: {status: [700], jsonpath: {"$..[": 1}}
 `))
-	for _, want := range []string{"only one of json, text or multipart", `capture "both"`, `capture "none"`, `capture "bad": jsonpath`, "status 700", `assert jsonpath "$..["`} {
+	for _, want := range []string{"only one of json, text, multipart or payload", `capture "both"`, `capture "none"`, `capture "bad": jsonpath`, "status 700", `assert jsonpath "$..["`} {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("Validate error %v does not mention %q", err, want)
 		}
@@ -279,5 +281,91 @@ func TestOutputs(t *testing.T) {
 	got := Module{}.Outputs(config(t, "capture: {a: {status: true}, b: {header: X}}"))
 	if len(got) != 2 {
 		t.Errorf("Outputs = %v", got)
+	}
+}
+
+// store is a fake storage API: it hashes what it receives and serves it back.
+func store(t *testing.T) *httptest.Server {
+	var mu sync.Mutex
+	var saved []byte
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch {
+		case r.Method == http.MethodGet:
+			_, _ = w.Write(saved)
+			return
+		case strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/"):
+			f, h, err := r.FormFile("file")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			saved, _ = io.ReadAll(f)
+			w.Header().Set("X-Filename", h.Filename)
+			w.Header().Set("X-Type", h.Header.Get("Content-Type"))
+		default:
+			saved, _ = io.ReadAll(r.Body)
+			w.Header().Set("X-Type", r.Header.Get("Content-Type"))
+		}
+		sum := sha256.Sum256(saved)
+		_ = json.NewEncoder(w).Encode(map[string]any{"sha256": hex.EncodeToString(sum[:]), "size": len(saved)})
+	}))
+}
+
+func TestPayloadUploadAndVerify(t *testing.T) {
+	srv := store(t)
+	defer srv.Close()
+
+	for name, body := range map[string]string{
+		"multipart": "{multipart: {meta: synthetic, file: {payload: {kind: zip, size: 1MiB, as: upload}}}}",
+		"raw":       "{payload: {kind: png, size: 64KiB, as: upload}}",
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := config(t, "method: POST\nurl: "+srv.URL+"\nbody: "+body+"\ncapture: {server_sum: {jsonpath: $.sha256}, ctype: {header: X-Type}}")
+			if !(Module{}).IsTransfer(c) || len(Module{}.Outputs(c)) != 3 {
+				t.Errorf("IsTransfer/Outputs wrong for a payload body: %v", Module{}.Outputs(c))
+			}
+			res := run(t, nil, c)
+			if res.Err != nil {
+				t.Fatal(res.Err)
+			}
+			up, _ := res.Captured["upload"].Raw.(map[string]any)
+			if up == nil || up["sha256"] != res.Captured["server_sum"].Raw {
+				t.Fatalf("payload sha256 %v does not match what the server stored %v", up, res.Captured["server_sum"].Raw)
+			}
+			if want := map[string]string{"multipart": "application/zip", "raw": "image/png"}[name]; res.Captured["ctype"].Raw != want {
+				t.Errorf("content type %v, want %s", res.Captured["ctype"].Raw, want)
+			}
+			if len(res.Transfers) != 1 || res.Transfers[0].Direction != "upload" || res.Transfers[0].Bytes < up["size"].(int64) {
+				t.Errorf("transfers = %+v", res.Transfers)
+			}
+
+			// Download what was stored and verify it against the upload.
+			down := run(t, nil, config(t, fmt.Sprintf("url: %s\nassert: {sha256: %s, size: %d}", srv.URL, up["sha256"], up["size"])))
+			if down.Err != nil {
+				t.Fatal(down.Err)
+			}
+		})
+	}
+}
+
+func TestPayloadUploadNotReadByServer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "{}") // answers without reading the 8 MiB body
+	}))
+	defer srv.Close()
+	res := run(t, nil, config(t, "method: PUT\nurl: "+srv.URL+"\nbody: {payload: {kind: random, size: 8MiB, as: up}}"))
+	if res.Err == nil {
+		t.Fatal("a payload the server did not receive must not be published as uploaded")
+	}
+}
+
+func TestPayloadValidate(t *testing.T) {
+	err := Module{}.Validate(config(t, "body: {multipart: {f: {value: x, payload: {kind: gif, size: 1}}}}"))
+	for _, want := range []string{"value or payload, not both", `unknown payload kind "gif"`} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Validate error %v does not mention %q", err, want)
+		}
 	}
 }
