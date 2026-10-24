@@ -1,0 +1,4 @@
+/herakles
+/dist/
+*.test
+*.out
