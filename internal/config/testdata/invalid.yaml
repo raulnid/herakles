@@ -1,0 +1,8 @@
+interval: -1s
+targets:
+  - name: dev
+    vars:
+      both: {value: x, env: X}
+labors:
+  - name: login
+    steps: []

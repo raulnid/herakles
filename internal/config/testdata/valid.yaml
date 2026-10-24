@@ -1,0 +1,34 @@
+interval: 30s
+vars:
+  api_key: {file: /etc/herakles/secrets/api-key, secret: true}
+targets:
+  - name: dev
+    vars:
+      base_url: {value: "http://localhost:8080"}
+  - name: prod
+    safe: true
+    vars:
+      base_url: {env: PROD_BASE_URL}
+labors:
+  - name: login
+    steps:
+      - name: token
+        description: Exchange the API key for a session token
+        http:
+          method: POST
+          url: "{{ .vars.base_url }}/auth/token"
+  - name: projects
+    steps:
+      - name: upload
+        mutating: true
+        http: {method: POST, url: "{{ .vars.base_url }}/projects"}
+    finally:
+      - name: cleanup
+        optional: true
+        mutating: true
+        http: {method: DELETE, url: "{{ .vars.base_url }}/projects/{{ .vars.project_id }}"}
+  - name: logout
+    finalizer: true
+    steps:
+      - name: logout
+        http: {method: POST, url: "{{ .vars.base_url }}/auth/logout"}
