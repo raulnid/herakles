@@ -58,6 +58,22 @@ headers: {Authorization: "Bearer {{ .vars.token }}", X-Plain: "200"}
 	}
 }
 
+func TestRenderKeepsVariableTypes(t *testing.T) {
+	n := node(t, `{key: "{{ .vars.key }}", n: "{{ .vars.n }}", on: "{{ .vars.on }}", mixed: "n={{ .vars.n }}", lit: "{{ .vars.null }}"}`)
+	out, err := Render(n, data(map[string]any{"key": "0123", "n": 5, "on": true, "null": "null"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := out.Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"key": "0123", "n": 5, "on": true, "mixed": "n=5", "lit": "null"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %#v\nwant %#v", got, want)
+	}
+}
+
 func TestRenderAlias(t *testing.T) {
 	doc := node(t, `
 common: &auth {Authorization: "Bearer {{ .vars.token }}"}
