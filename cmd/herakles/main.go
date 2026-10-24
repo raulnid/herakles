@@ -2,13 +2,16 @@
 package main
 
 import (
-	"errors"
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/raulnid/herakles/internal/config"
+	"github.com/raulnid/herakles/internal/engine"
 )
 
 const usage = `usage:
@@ -54,7 +57,16 @@ func run(args []string, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s: ok\n", *cfgPath)
 		return 0
 	}
-	_ = once
-	fmt.Fprintln(stderr, errors.New("run: engine not implemented yet"))
-	return 1
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	e := engine.New(cfg, nil)
+	if *once {
+		if !e.Once(ctx) {
+			return 1
+		}
+		return 0
+	}
+	e.Run(ctx)
+	return 0
 }

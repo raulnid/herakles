@@ -53,3 +53,14 @@ func clone(n *yaml.Node) *yaml.Node {
 	}
 	return &c
 }
+
+// Static returns a copy of n with every templated scalar set to null, so a
+// config can be decoded and checked before any variable exists.
+func Static(n *yaml.Node) *yaml.Node {
+	out := clone(n)
+	_ = eachTemplate(out, func(s *yaml.Node) error {
+		s.Value, s.Tag, s.Style = "", "!!null", 0
+		return nil
+	})
+	return out
+}
