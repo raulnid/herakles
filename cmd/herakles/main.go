@@ -12,6 +12,7 @@ import (
 
 	"github.com/raulnid/herakles/internal/config"
 	"github.com/raulnid/herakles/internal/engine"
+	_ "github.com/raulnid/herakles/internal/modules/httpstep"
 )
 
 const usage = `usage:

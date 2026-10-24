@@ -2,10 +2,14 @@ package engine
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"net/http/cookiejar"
+	"os"
 	"slices"
 	"time"
 
@@ -32,14 +36,15 @@ type run struct {
 func (e *Engine) cycle(ctx context.Context, t config.Target) bool {
 	start := time.Now()
 	v, err := vars.Resolve(e.cfg.Vars, t.Vars)
-	if err != nil {
+	client, cerr := newClient(t.TLS)
+	if err = errors.Join(err, cerr); err != nil {
 		e.obs.CycleEnd(CycleReport{Target: t.Name, Err: err, Duration: time.Since(start)})
 		return false
 	}
 	r := &run{
 		e: e, target: t, vars: v,
 		cycle:       map[string]any{"id": fmt.Sprintf("%08x", rand.Uint32()), "start": start.Unix()},
-		client:      &http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()},
+		client:      client,
 		unavailable: map[string]bool{},
 	}
 	defer r.client.CloseIdleConnections()
@@ -191,4 +196,27 @@ func stepNames(l config.Labor) []string {
 		names = append(names, s.Name)
 	}
 	return names
+}
+
+// newClient builds the HTTP client of one cycle: keep-alive and cookies live
+// as long as the cycle, like a real client session.
+func newClient(c config.TLS) (*http.Client, error) {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: c.InsecureSkipVerify} //nolint:gosec // opt-in per target
+	if c.CAFile != "" {
+		pem, err := os.ReadFile(c.CAFile)
+		if err != nil {
+			return nil, fmt.Errorf("tls ca_file: %w", err)
+		}
+		pool, err := x509.SystemCertPool()
+		if err != nil {
+			pool = x509.NewCertPool()
+		}
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("tls ca_file %s: no PEM certificates found", c.CAFile)
+		}
+		tr.TLSClientConfig.RootCAs = pool
+	}
+	jar, _ := cookiejar.New(nil) // never fails with nil options
+	return &http.Client{Transport: tr, Jar: jar}, nil
 }

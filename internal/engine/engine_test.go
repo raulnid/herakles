@@ -2,9 +2,13 @@ package engine
 
 import (
 	"context"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -380,5 +384,37 @@ labors:
 		if s := fmt.Sprintf("%s %s", l.Labor, l.Status); s != want[i] {
 			t.Errorf("labor %d = %q, want %q", i, s, want[i])
 		}
+	}
+}
+
+func TestClientTLS(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer srv.Close()
+	ca := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	get := func(c config.TLS) error {
+		client, err := newClient(c)
+		if err != nil {
+			return err
+		}
+		resp, err := client.Get(srv.URL)
+		if err == nil {
+			resp.Body.Close()
+		}
+		return err
+	}
+	if err := get(config.TLS{}); err == nil {
+		t.Error("unknown CA must be rejected")
+	}
+	if err := get(config.TLS{CAFile: ca}); err != nil {
+		t.Errorf("ca_file: %v", err)
+	}
+	if err := get(config.TLS{InsecureSkipVerify: true}); err != nil {
+		t.Errorf("insecure_skip_verify: %v", err)
+	}
+	if err := get(config.TLS{CAFile: "/nonexistent/ca.pem"}); err == nil || !strings.Contains(err.Error(), "ca_file") {
+		t.Errorf("missing ca_file: %v", err)
 	}
 }

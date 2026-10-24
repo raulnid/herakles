@@ -39,6 +39,12 @@ type Target struct {
 	Name string         `yaml:"name"`
 	Safe bool           `yaml:"safe"`
 	Vars map[string]Var `yaml:"vars"`
+	TLS  TLS            `yaml:"tls"`
+}
+
+type TLS struct {
+	CAFile             string `yaml:"ca_file"` // added to the system roots, re-read every cycle
+	InsecureSkipVerify bool   `yaml:"insecure_skip_verify"`
 }
 
 type Labor struct {
