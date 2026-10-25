@@ -60,6 +60,9 @@ func run(args []string, stderr io.Writer) int {
 	if err == nil && target != nil && *target != "" {
 		err = cfg.OnlyTarget(*target)
 	}
+	if err == nil {
+		err = engine.Validate(cfg)
+	}
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", *cfgPath, err)
 		return 1

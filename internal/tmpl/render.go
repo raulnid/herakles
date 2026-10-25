@@ -69,7 +69,7 @@ func clone(n *yaml.Node) *yaml.Node {
 func Static(n *yaml.Node) *yaml.Node {
 	out := clone(n)
 	_ = eachTemplate(out, func(s *yaml.Node) error {
-		s.Value, s.Tag, s.Style = "", "!!null", 0
+		s.Value, s.Tag, s.Style = "null", "!!null", 0
 		return nil
 	})
 	return out

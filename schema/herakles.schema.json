@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/raulnid/herakles/main/schema/herakles.schema.json",
+  "title": "herakles config",
+  "description": "Targets to probe, variables and labors (ordered step lists) run every interval.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["targets", "labors"],
+  "properties": {
+    "interval": { "$ref": "#/$defs/duration", "description": "Pause between the start of two cycles of a target. Default 60s." },
+    "step_timeout": { "$ref": "#/$defs/duration", "description": "Time limit of each step. Default 10s." },
+    "transfer_timeout": { "$ref": "#/$defs/duration", "description": "Time limit of steps that upload a payload or verify a download (sha256/size). Default 120s." },
+    "listen": { "type": "string", "description": "Address of /metrics and /health. Default :9090.", "examples": [":9090"] },
+    "user_agent": { "type": "string", "description": "User-Agent of every request. Default identifies the traffic as synthetic." },
+    "vars": { "$ref": "#/$defs/vars", "description": "Variables shared by every target. Target vars override them." },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Environments to probe. Each runs in parallel, on its own, with its own variables.",
+      "items": { "$ref": "#/$defs/target" }
+    },
+    "labors": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Scenarios run in order every cycle. When a required step fails, later labors are skipped; finalizers still run.",
+      "items": { "$ref": "#/$defs/labor" }
+    }
+  },
+  "$defs": {
+    "duration": { "type": "string", "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$", "examples": ["30s", "2m", "1m30s"] },
+    "template": { "type": "string", "pattern": "\\{\\{", "description": "A text/template expression, e.g. {{ .vars.token }}." },
+    "ident": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+    "vars": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/ident" },
+      "additionalProperties": { "$ref": "#/$defs/var" }
+    },
+    "var": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A variable source. Exactly one of value, file or env. Files and env are read again every cycle.",
+      "properties": {
+        "value": { "description": "Literal value. Never put secrets here." },
+        "file": { "type": "string", "description": "File to read, e.g. a mounted Secret. Always treated as secret; a trailing newline is trimmed." },
+        "env": { "type": "string", "description": "Environment variable to read." },
+        "secret": { "type": "boolean", "description": "Mask the value in logs and errors." }
+      },
+      "oneOf": [{ "required": ["value"] }, { "required": ["file"] }, { "required": ["env"] }]
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "description": "Value of the target label on every metric." },
+        "safe": { "type": "boolean", "description": "Skip every step marked mutating: the same labors probe production read-only." },
+        "vars": { "$ref": "#/$defs/vars" },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ca_file": { "type": "string", "description": "PEM bundle added to the system roots, read every cycle." },
+            "insecure_skip_verify": { "type": "boolean", "description": "Do not verify server certificates." }
+          }
+        }
+      }
+    },
+    "labor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "steps"],
+      "properties": {
+        "name": { "type": "string" },
+        "finalizer": { "type": "boolean", "description": "Run at the end of every cycle, even when another labor failed (logout and the like)." },
+        "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } },
+        "finally": {
+          "type": "array",
+          "description": "Cleanup steps that always run after the steps, whatever happened. A step whose variables are missing is skipped.",
+          "items": { "$ref": "#/$defs/step" }
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "description": "One step: core fields plus exactly one module key.",
+      "properties": {
+        "name": { "type": "string", "description": "Value of the step label. Unique within the labor." },
+        "description": { "type": "string", "description": "What the step does, shown in the log when it starts." },
+        "optional": { "type": "boolean", "description": "A failure is recorded but the labor goes on." },
+        "mutating": { "type": "boolean", "description": "The step writes; it is skipped on safe targets." },
+        "http": { "$ref": "#/$defs/http" }
+      },
+      "oneOf": [{ "required": ["http"] }]
+    },
+    "http": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One HTTP request. Fails unless the status is 2xx or listed in assert.status.",
+      "properties": {
+        "method": { "type": "string", "description": "Default GET.", "examples": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+        "url": { "type": "string" },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+        "body": { "$ref": "#/$defs/body" },
+        "capture": {
+          "type": "object",
+          "description": "Variables to set from the response.",
+          "propertyNames": { "$ref": "#/$defs/ident" },
+          "additionalProperties": { "$ref": "#/$defs/capture" }
+        },
+        "assert": { "$ref": "#/$defs/assert" }
+      }
+    },
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "maxProperties": 1,
+      "properties": {
+        "json": { "description": "Any value, sent as JSON." },
+        "text": { "type": "string" },
+        "multipart": {
+          "type": "object",
+          "description": "Form fields: a string, or a file with filename and value or payload.",
+          "additionalProperties": { "$ref": "#/$defs/part" }
+        },
+        "payload": { "$ref": "#/$defs/payload" }
+      }
+    },
+    "part": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "value": { "type": "string" },
+            "filename": { "type": "string" },
+            "content_type": { "type": "string" },
+            "payload": { "$ref": "#/$defs/payload" }
+          }
+        }
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "size"],
+      "description": "A synthetic file generated in memory and streamed, hashed on the fly.",
+      "properties": {
+        "kind": { "anyOf": [{ "enum": ["random", "zip", "png"] }, { "type": "string" }] },
+        "size": {
+          "anyOf": [
+            { "type": "integer", "minimum": 1 },
+            { "type": "string", "pattern": "^[0-9]+\\s*([KMG]i?B|B)?$" },
+            { "$ref": "#/$defs/template" }
+          ],
+          "examples": ["5MiB", "512KB", 1024]
+        },
+        "as": { "$ref": "#/$defs/ident", "description": "Variable that receives {sha256, size} once uploaded: {{ .vars.<as>.sha256 }}." }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "jsonpath": { "type": "string", "examples": ["$.token", "$.items[0].id"] },
+        "header": { "type": "string" },
+        "status": { "const": true },
+        "secret": { "type": "boolean", "description": "Mask the captured value in logs and errors." }
+      },
+      "oneOf": [{ "required": ["jsonpath"] }, { "required": ["header"] }, { "required": ["status"] }]
+    },
+    "assert": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "array",
+          "description": "Accepted status codes; replaces the 2xx default. [401, 403] checks a request is rejected.",
+          "items": { "anyOf": [{ "type": "integer", "minimum": 100, "maximum": 599 }, { "$ref": "#/$defs/template" }] }
+        },
+        "jsonpath": { "type": "object", "description": "JSONPath -> expected value.", "additionalProperties": true },
+        "sha256": { "anyOf": [{ "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }, { "$ref": "#/$defs/template" }] },
+        "size": { "anyOf": [{ "type": "integer", "minimum": 0 }, { "$ref": "#/$defs/template" }] }
+      }
+    }
+  }
+}

@@ -21,7 +21,7 @@ labors:
     steps:
       - name: upload
         mutating: true
-        http: {method: POST, url: "{{ .vars.base_url }}/projects"}
+        http: {method: POST, url: "{{ .vars.base_url }}/projects", capture: {project_id: {jsonpath: $.id}}}
     finally:
       - name: cleanup
         optional: true
