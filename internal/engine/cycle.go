@@ -51,7 +51,8 @@ func (e *Engine) cycle(ctx context.Context, t config.Target) bool {
 
 	ok := true
 	var stoppedBy string
-	for _, l := range e.cfg.Labors {
+	for i := range e.cfg.Labors {
+		l := &e.cfg.Labors[i]
 		if l.Finalizer {
 			continue
 		}
@@ -63,7 +64,7 @@ func (e *Engine) cycle(ctx context.Context, t config.Target) bool {
 			reason = "shutting down"
 		}
 		if reason != "" {
-			e.obs.LaborEnd(LaborReport{Target: t.Name, Labor: l.Name, Status: Skipped, Reason: reason, Steps: stepNames(l)})
+			e.obs.LaborEnd(LaborReport{Target: t.Name, Labor: l.Name, Status: Skipped, Reason: reason, Steps: e.names[l]})
 			continue
 		}
 		if r.labor(ctx, l) == Failed {
@@ -71,8 +72,8 @@ func (e *Engine) cycle(ctx context.Context, t config.Target) bool {
 		}
 	}
 	// Finalizers (logout and the like) run whatever happened, even on shutdown.
-	for _, l := range e.cfg.Labors {
-		if l.Finalizer && r.labor(context.WithoutCancel(ctx), l) == Failed {
+	for i := range e.cfg.Labors {
+		if l := &e.cfg.Labors[i]; l.Finalizer && r.labor(context.WithoutCancel(ctx), l) == Failed {
 			ok = false
 		}
 	}
@@ -80,10 +81,11 @@ func (e *Engine) cycle(ctx context.Context, t config.Target) bool {
 	return ok
 }
 
-func (r *run) labor(ctx context.Context, l config.Labor) Status {
+func (r *run) labor(ctx context.Context, l *config.Labor) Status {
 	start := time.Now()
-	rep := LaborReport{Target: r.target.Name, Labor: l.Name, Steps: stepNames(l)}
-	for i, s := range l.Steps {
+	rep := LaborReport{Target: r.target.Name, Labor: l.Name, Steps: r.e.names[l]}
+	for i := range l.Steps {
+		s := &l.Steps[i]
 		sr := r.step(ctx, l, s, i+1, len(l.Steps), l.Finalizer)
 		if sr.Status == Failed && !s.Optional {
 			rep.Status, rep.FailedStep, rep.Reason = Failed, s.Name, sr.Reason
@@ -91,7 +93,8 @@ func (r *run) labor(ctx context.Context, l config.Labor) Status {
 		}
 	}
 	// finally is a labor-level defer: it runs on failure and on shutdown.
-	for _, s := range l.Finally {
+	for i := range l.Finally {
+		s := &l.Finally[i]
 		sr := r.step(context.WithoutCancel(ctx), l, s, 0, 0, true)
 		if sr.Status == Failed && !s.Optional && rep.Status == OK {
 			rep.Status, rep.FailedStep, rep.Reason = Failed, s.Name, sr.Reason
@@ -107,12 +110,11 @@ func (r *run) labor(ctx context.Context, l config.Labor) Status {
 
 // step runs one step. lenient steps (finally, finalizers) are skipped instead
 // of failed when a variable is undefined: there is nothing to clean up.
-func (r *run) step(ctx context.Context, l config.Labor, s config.Step, n, total int, lenient bool) StepReport {
+func (r *run) step(ctx context.Context, l *config.Labor, s *config.Step, n, total int, lenient bool) StepReport {
 	rep := StepReport{
 		Target: r.target.Name, Labor: l.Name, Step: s.Name, Description: s.Description,
-		N: n, Total: total, Finally: n == 0, Optional: s.Optional,
+		N: n, Total: total, Finally: n == 0, Optional: s.Optional, Needs: r.e.needs[s],
 	}
-	rep.Needs, _ = tmpl.NodeRefs(&s.Config) // a malformed template fails in Render below
 	end := func(st Status, reason string) StepReport {
 		rep.Status, rep.Reason = st, reason
 		r.e.obs.StepEnd(rep)
@@ -178,7 +180,7 @@ func (r *run) step(ctx context.Context, l config.Labor, s config.Step, n, total 
 	}
 }
 
-func (r *run) markUnavailable(m module.Module, s config.Step) {
+func (r *run) markUnavailable(m module.Module, s *config.Step) {
 	o, ok := m.(module.Outputs)
 	if !ok {
 		return
@@ -200,14 +202,6 @@ func safeRun(ctx context.Context, m module.Module, cfg any, env *module.Env) (re
 		}
 	}()
 	return m.Run(ctx, cfg, env)
-}
-
-func stepNames(l config.Labor) []string {
-	names := make([]string, 0, len(l.Steps)+len(l.Finally))
-	for _, s := range append(slices.Clone(l.Steps), l.Finally...) {
-		names = append(names, s.Name)
-	}
-	return names
 }
 
 // newClient builds the HTTP client of one cycle: keep-alive and cookies live
