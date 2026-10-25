@@ -142,7 +142,8 @@ func (r *run) step(ctx context.Context, l config.Labor, s config.Step, n, total 
 		return end(Failed, r.vars.Redact(err.Error()))
 	}
 	cfg := m.NewConfig()
-	if err := module.Decode(rendered, cfg); err != nil {
+	// Unknown fields were rejected by Validate at startup; skip the strict round-trip here.
+	if err := rendered.Decode(cfg); err != nil {
 		return end(Failed, r.vars.Redact("config: "+err.Error()))
 	}
 
@@ -155,7 +156,7 @@ func (r *run) step(ctx context.Context, l config.Labor, s config.Step, n, total 
 
 	r.e.obs.StepStart(rep)
 	t0 := time.Now()
-	res := m.Run(sctx, cfg, &module.Env{Target: r.target.Name, Vars: r.vars, HTTPClient: r.client, UserAgent: r.e.cfg.UserAgent})
+	res := safeRun(sctx, m, cfg, &module.Env{Target: r.target.Name, Vars: r.vars, HTTPClient: r.client, UserAgent: r.e.cfg.UserAgent})
 	rep.Duration, rep.Phases, rep.Transfers = time.Since(t0), res.Phases, res.Transfers
 
 	switch {
@@ -183,12 +184,22 @@ func (r *run) markUnavailable(m module.Module, s config.Step) {
 		return
 	}
 	cfg := m.NewConfig()
-	if module.Decode(tmpl.Static(&s.Config), cfg) != nil {
+	if tmpl.Static(&s.Config).Decode(cfg) != nil {
 		return
 	}
 	for _, name := range o.Outputs(cfg) {
 		r.unavailable[name] = true
 	}
+}
+
+// safeRun keeps a panicking module from taking down every target.
+func safeRun(ctx context.Context, m module.Module, cfg any, env *module.Env) (res module.Result) {
+	defer func() {
+		if p := recover(); p != nil {
+			res = module.Result{Err: fmt.Errorf("module panicked: %v", p)}
+		}
+	}()
+	return m.Run(ctx, cfg, env)
 }
 
 func stepNames(l config.Labor) []string {

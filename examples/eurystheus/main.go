@@ -45,6 +45,7 @@ type project struct {
 	data   []byte
 }
 
+// shortcut: projects and sessions live in memory without a cap, fine for a demo; add limits before exposing it.
 type server struct {
 	mux      *http.ServeMux
 	apiKey   string

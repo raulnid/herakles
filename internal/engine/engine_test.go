@@ -30,6 +30,7 @@ type fakeCfg struct {
 	Set      map[string]string `yaml:"set"`
 	Secret   bool              `yaml:"secret"`
 	Transfer bool              `yaml:"transfer"`
+	Panic    bool              `yaml:"panic"`
 }
 
 var (
@@ -53,6 +54,9 @@ func (fake) IsTransfer(cfg any) bool { return cfg.(*fakeCfg).Transfer }
 
 func (fake) Run(ctx context.Context, cfg any, env *module.Env) module.Result {
 	c := cfg.(*fakeCfg)
+	if c.Panic {
+		panic("boom")
+	}
 	if c.Echo != "" {
 		ranMu.Lock()
 		ran = append(ran, c.Echo)
@@ -416,5 +420,23 @@ func TestClientTLS(t *testing.T) {
 	}
 	if err := get(config.TLS{CAFile: "/nonexistent/ca.pem"}); err == nil || !strings.Contains(err.Error(), "ca_file") {
 		t.Errorf("missing ca_file: %v", err)
+	}
+}
+
+func TestModulePanicFailsStepOnly(t *testing.T) {
+	e, rec := setup(t, `
+targets: [{name: dev}]
+labors:
+  - name: l
+    steps: [{name: s, optional: true, fake: {panic: true}}, {name: after, fake: {echo: after}}]
+`)
+	if !e.Once(context.Background()) {
+		t.Error("an optional panicking step must not fail the cycle")
+	}
+	if s := rec.step("dev", "l", "s"); s.Status != Failed || !strings.Contains(s.Reason, "module panicked: boom") {
+		t.Errorf("step: %+v", s)
+	}
+	if got := ranSteps(); !slices.Equal(got, []string{"after"}) {
+		t.Errorf("ran %v", got)
 	}
 }

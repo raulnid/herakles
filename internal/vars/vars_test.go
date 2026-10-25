@@ -21,6 +21,11 @@ func TestRedact(t *testing.T) {
 	if got != want {
 		t.Errorf("Redact = %s\nwant      %s", got, want)
 	}
+	enc := New()
+	enc.Set("t", Value{Raw: `a b/c"d`, Secret: true})
+	if got := enc.Redact(`Get "http://h/?t=a+b%2Fc%22d" and {"t":"a b/c\"d"} and /p/a%20b%2Fc%22d`); got != `Get "http://h/?t=***" and {"t":"***"} and /p/***` {
+		t.Errorf("encoded forms not masked: %s", got)
+	}
 	if New().Redact("x") != "x" {
 		t.Error("empty Vars must not change input")
 	}

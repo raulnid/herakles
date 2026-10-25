@@ -28,15 +28,24 @@ type respBody struct {
 	head   []byte
 }
 
-func readBody(r io.Reader, keepJSON bool) (*respBody, error) {
+// readBody hashes only when asked: sha256 of a large download costs CPU for nothing.
+func readBody(r io.Reader, keepJSON, hash bool) (*respBody, error) {
 	keep := excerptLen
 	if keepJSON {
 		keep = maxJSON + 1
 	}
-	h := sha256.New()
 	p := &prefix{max: keep}
-	n, err := io.Copy(io.MultiWriter(h, p), r)
-	return &respBody{sha256: hex.EncodeToString(h.Sum(nil)), size: n, head: p.b}, err
+	var w io.Writer = p
+	h := sha256.New()
+	if hash {
+		w = io.MultiWriter(h, p)
+	}
+	n, err := io.Copy(w, r)
+	rb := &respBody{size: n, head: p.b}
+	if hash {
+		rb.sha256 = hex.EncodeToString(h.Sum(nil))
+	}
+	return rb, err
 }
 
 func (rb *respBody) json() (any, error) {

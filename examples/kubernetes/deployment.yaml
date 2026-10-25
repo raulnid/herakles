@@ -24,6 +24,11 @@ spec:
         - name: herakles
           image: ghcr.io/raulnid/herakles
           args: [run, -config, /etc/herakles/config/herakles.yaml]
+          env:
+            # Let the GC work against the container limit instead of growing to it.
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef: {resource: limits.memory}
           ports:
             - {name: metrics, containerPort: 9090}
           livenessProbe:
@@ -32,7 +37,7 @@ spec:
             httpGet: {path: /health, port: metrics}
           resources:
             requests: {cpu: 10m, memory: 32Mi}
-            limits: {memory: 128Mi}
+            limits: {memory: 64Mi}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

@@ -4,14 +4,27 @@ package tmpl
 import (
 	"slices"
 	"strings"
+	"sync"
 	"text/template"
 	"text/template/parse"
 
 	"go.yaml.in/yaml/v3"
 )
 
+// parsed caches templates by source: configs never change at runtime, so
+// each template is parsed once. Parsed templates are safe for concurrent use.
+var parsed sync.Map
+
 func parseTemplate(src string) (*template.Template, error) {
-	return template.New("").Option("missingkey=error").Parse(src)
+	if t, ok := parsed.Load(src); ok {
+		return t.(*template.Template), nil
+	}
+	t, err := template.New("").Option("missingkey=error").Parse(src)
+	if err != nil {
+		return nil, err
+	}
+	parsed.Store(src, t)
+	return t, nil
 }
 
 // Refs returns the top-level variable names a template reads as .vars.NAME

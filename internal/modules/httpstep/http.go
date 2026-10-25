@@ -139,7 +139,7 @@ func (m Module) Run(ctx context.Context, cfg any, env *module.Env) module.Result
 		return module.Result{Err: err, Phases: tr.phases(time.Now())}
 	}
 	defer resp.Body.Close()
-	rb, readErr := readBody(resp.Body, c.needsJSON())
+	rb, readErr := readBody(resp.Body, c.needsJSON(), c.Assert.SHA256 != "")
 	res := module.Result{Phases: tr.phases(time.Now())}
 	if body.uploads {
 		n, firstRead := body.stats()

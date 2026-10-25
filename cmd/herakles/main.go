@@ -26,7 +26,7 @@ import (
 )
 
 const usage = `usage:
-  herakles run      -config FILE [-once] [-target NAME]
+  herakles run      -config FILE [-once] [-target NAME] [-log-level LEVEL]
   herakles validate -config FILE`
 
 func main() {
@@ -42,11 +42,13 @@ func run(args []string, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", "herakles.yaml", "path to the config file")
 	var once *bool
+	var level slog.Level
 	var target *string
 	switch args[0] {
 	case "run":
 		once = fs.Bool("once", false, "run a single cycle and exit 1 if any required step failed")
 		target = fs.String("target", "", "run only this target")
+		fs.TextVar(&level, "log-level", slog.LevelInfo, "debug, info, warn or error; warn logs only failures")
 	case "validate":
 	default:
 		fmt.Fprintln(stderr, usage)
@@ -74,7 +76,7 @@ func run(args []string, stderr io.Writer) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	log := slog.New(logfmt.NewHandler(stderr, slog.LevelInfo))
+	log := slog.New(logfmt.NewHandler(stderr, level))
 	slog.SetDefault(log)
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
@@ -95,7 +97,8 @@ func serve(ctx context.Context, stop func(), cfg *config.Config, reg *prometheus
 	mux := http.NewServeMux()
 	mux.Handle("GET /metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok\n") })
-	srv := &http.Server{Addr: cfg.Listen, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Addr: cfg.Listen, Handler: mux,
+		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 2 * time.Minute}
 
 	failed := make(chan error, 1)
 	go func() {
