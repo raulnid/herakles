@@ -1,17 +1,19 @@
 package httpstep
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/ohler55/ojg/jp"
-	"github.com/ohler55/ojg/oj"
 )
 
 const (
@@ -52,9 +54,15 @@ func (rb *respBody) json() (any, error) {
 	if len(rb.head) > maxJSON {
 		return nil, fmt.Errorf("response body over %d bytes, too large for jsonpath", maxJSON)
 	}
-	doc, err := oj.Parse(rb.head)
-	if err != nil {
+	// UseNumber keeps large integer ids exact; jp walks the generic result.
+	dec := json.NewDecoder(bytes.NewReader(rb.head))
+	dec.UseNumber()
+	var doc any
+	if err := dec.Decode(&doc); err != nil {
 		return nil, fmt.Errorf("response is not JSON: %w", err)
+	}
+	if dec.More() {
+		return nil, errors.New("response is not JSON: data after the first value")
 	}
 	return doc, nil
 }
@@ -86,8 +94,24 @@ func (p *prefix) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-func first(doc any, path string) (any, error) {
+// paths caches compiled JSONPath expressions; like templates, they come from
+// the config and never change.
+var paths sync.Map
+
+func compile(path string) (jp.Expr, error) {
+	if x, ok := paths.Load(path); ok {
+		return x.(jp.Expr), nil
+	}
 	x, err := jp.ParseString(path)
+	if err != nil {
+		return nil, err
+	}
+	paths.Store(path, x)
+	return x, nil
+}
+
+func first(doc any, path string) (any, error) {
+	x, err := compile(path)
 	if err != nil {
 		return nil, fmt.Errorf("jsonpath %s: %w", path, err)
 	}
@@ -107,4 +131,24 @@ func jsonString(v any) string {
 		return fmt.Sprint(v)
 	}
 	return string(b)
+}
+
+// parseDigest reads a SHA-256 digest sent by the server: plain hex, plain
+// base64 (as in x-amz-checksum-sha256), or the sha-256 member of an RFC 9530
+// Content-Digest / Repr-Digest or an RFC 3230 Digest header. It returns hex.
+func parseDigest(v string) (string, error) {
+	for _, member := range strings.Split(v, ",") {
+		if k, val, ok := strings.Cut(strings.TrimSpace(member), "="); ok && strings.EqualFold(k, "sha-256") {
+			v = strings.Trim(val, ":")
+			break
+		}
+	}
+	v = strings.TrimSpace(v)
+	if b, err := hex.DecodeString(v); err == nil && len(b) == sha256.Size {
+		return strings.ToLower(v), nil
+	}
+	if b, err := base64.StdEncoding.DecodeString(v); err == nil && len(b) == sha256.Size {
+		return hex.EncodeToString(b), nil
+	}
+	return "", fmt.Errorf("not a SHA-256 digest: %q", v)
 }

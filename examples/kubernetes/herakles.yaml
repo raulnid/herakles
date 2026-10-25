@@ -69,7 +69,10 @@ labors:
           url: "{{ .vars.base_url }}/projects/{{ .vars.project_id }}/file"
           headers: {Authorization: "Bearer {{ .vars.token }}"}
           assert:
+            # Against what herakles uploaded, and against the digest the
+            # server sends with the file (RFC 9530 Content-Digest).
             sha256: "{{ .vars.upload.sha256 }}"
+            sha256_header: Content-Digest
             size: "{{ .vars.upload.size }}"
       - name: rename
         description: Edit the project metadata

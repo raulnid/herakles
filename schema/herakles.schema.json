@@ -181,7 +181,15 @@
           "items": { "anyOf": [{ "type": "integer", "minimum": 100, "maximum": 599 }, { "$ref": "#/$defs/template" }] }
         },
         "jsonpath": { "type": "object", "description": "JSONPath -> expected value.", "additionalProperties": true },
-        "sha256": { "anyOf": [{ "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }, { "$ref": "#/$defs/template" }] },
+        "sha256": {
+          "description": "Expected SHA-256 (hex) of the response body, e.g. {{ .vars.upload.sha256 }} or a captured value.",
+          "anyOf": [{ "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }, { "$ref": "#/$defs/template" }]
+        },
+        "sha256_header": {
+          "type": "string",
+          "description": "Response header holding the body's SHA-256: hex, base64, or sha-256 in Content-Digest/Repr-Digest/Digest.",
+          "examples": ["Content-Digest", "Repr-Digest", "Digest", "x-amz-checksum-sha256", "X-Checksum-Sha256"]
+        },
         "size": { "anyOf": [{ "type": "integer", "minimum": 0 }, { "$ref": "#/$defs/template" }] }
       }
     }

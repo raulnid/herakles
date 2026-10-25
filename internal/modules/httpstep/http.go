@@ -4,6 +4,8 @@ package httpstep
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -13,8 +15,6 @@ import (
 	"slices"
 	"strings"
 	"time"
-
-	"github.com/ohler55/ojg/jp"
 
 	"github.com/raulnid/herakles/internal/module"
 	"github.com/raulnid/herakles/internal/vars"
@@ -45,8 +45,13 @@ type Assert struct {
 	// failures too: [401, 403] checks that a request is rejected.
 	Status   []int          `yaml:"status"`
 	JSONPath map[string]any `yaml:"jsonpath"` // path -> expected value
-	SHA256   string         `yaml:"sha256"`   // hex digest of the response body
 	Size     *int64         `yaml:"size"`     // response body length in bytes
+	// The body's SHA-256 is checked against SHA256 (hex, usually the
+	// {{ .vars.upload.sha256 }} of a payload or a captured value) and/or
+	// against the digest the server sends in the SHA256Header response
+	// header (hex, base64 or RFC 9530 Content-Digest).
+	SHA256       string `yaml:"sha256"`
+	SHA256Header string `yaml:"sha256_header"`
 }
 
 type Module struct{}
@@ -67,7 +72,9 @@ func (Module) IsTransfer(cfg any) bool {
 	return c.downloads() || c.Body.uploads()
 }
 
-func (c *Config) downloads() bool { return c.Assert.SHA256 != "" || c.Assert.Size != nil }
+func (c *Config) downloads() bool { return c.hashes() || c.Assert.Size != nil }
+
+func (c *Config) hashes() bool { return c.Assert.SHA256 != "" || c.Assert.SHA256Header != "" }
 
 func (Module) Validate(cfg any) error {
 	c := cfg.(*Config)
@@ -86,13 +93,18 @@ func (Module) Validate(cfg any) error {
 			errs = append(errs, fmt.Errorf("capture %q: exactly one of jsonpath, header or status is required", name))
 		}
 		if cp.JSONPath != "" {
-			if _, err := jp.ParseString(cp.JSONPath); err != nil {
+			if _, err := compile(cp.JSONPath); err != nil {
 				errs = append(errs, fmt.Errorf("capture %q: jsonpath: %w", name, err))
 			}
 		}
 	}
+	if s := c.Assert.SHA256; s != "" {
+		if b, err := hex.DecodeString(s); err != nil || len(b) != sha256.Size {
+			errs = append(errs, fmt.Errorf("assert sha256 %q: want 64 hex characters", s))
+		}
+	}
 	for path := range c.Assert.JSONPath {
-		if _, err := jp.ParseString(path); err != nil {
+		if _, err := compile(path); err != nil {
 			errs = append(errs, fmt.Errorf("assert jsonpath %q: %w", path, err))
 		}
 	}
@@ -104,11 +116,10 @@ func (Module) Validate(cfg any) error {
 	return errors.Join(errs...)
 }
 
-func (m Module) Run(ctx context.Context, cfg any, env *module.Env) module.Result {
+// Run does not repeat Validate: the config was checked at startup, and a bad
+// templated value fails where it is used.
+func (Module) Run(ctx context.Context, cfg any, env *module.Env) module.Result {
 	c := cfg.(*Config)
-	if err := m.Validate(c); err != nil {
-		return module.Result{Err: err}
-	}
 	body, err := c.Body.build()
 	if err != nil {
 		return module.Result{Err: err}
@@ -139,7 +150,7 @@ func (m Module) Run(ctx context.Context, cfg any, env *module.Env) module.Result
 		return module.Result{Err: err, Phases: tr.phases(time.Now())}
 	}
 	defer resp.Body.Close()
-	rb, readErr := readBody(resp.Body, c.needsJSON(), c.Assert.SHA256 != "")
+	rb, readErr := readBody(resp.Body, c.needsJSON(), c.hashes())
 	res := module.Result{Phases: tr.phases(time.Now())}
 	if body.uploads {
 		n, firstRead := body.stats()
@@ -190,6 +201,19 @@ func (c *Config) check(resp *http.Response, rb *respBody) (map[string]vars.Value
 	}
 	if c.Assert.SHA256 != "" && !strings.EqualFold(rb.sha256, c.Assert.SHA256) {
 		return nil, fmt.Errorf("body sha256 %s, want %s", rb.sha256, strings.ToLower(c.Assert.SHA256))
+	}
+	if h := c.Assert.SHA256Header; h != "" {
+		v := resp.Header.Get(h)
+		if v == "" {
+			return nil, fmt.Errorf("assert sha256_header: header %s not in response", h)
+		}
+		want, err := parseDigest(v)
+		if err != nil {
+			return nil, fmt.Errorf("assert sha256_header %s: %w", h, err)
+		}
+		if rb.sha256 != want {
+			return nil, fmt.Errorf("body sha256 %s, but header %s says %s", rb.sha256, h, want)
+		}
 	}
 
 	var doc any

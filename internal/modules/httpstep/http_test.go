@@ -3,6 +3,7 @@ package httpstep
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -265,9 +266,9 @@ capture:
   both: {jsonpath: $.a, header: X}
   none: {secret: true}
   bad: {jsonpath: "$[?"}
-assert: {status: [700], jsonpath: {"$..[": 1}}
+assert: {status: [700], jsonpath: {"$..[": 1}, sha256: abc}
 `))
-	for _, want := range []string{"only one of json, text, multipart or payload", `capture "both"`, `capture "none"`, `capture "bad": jsonpath`, "status 700", `assert jsonpath "$..["`} {
+	for _, want := range []string{"only one of json, text, multipart or payload", `assert sha256 "abc": want 64 hex`, `capture "both"`, `capture "none"`, `capture "bad": jsonpath`, "status 700", `assert jsonpath "$..["`} {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("Validate error %v does not mention %q", err, want)
 		}
@@ -367,5 +368,68 @@ func TestPayloadValidate(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("Validate error %v does not mention %q", err, want)
 		}
+	}
+}
+
+func TestSHA256FromResponseHeader(t *testing.T) {
+	const content = "stored bytes"
+	sum := sha256.Sum256([]byte(content))
+	hexSum, b64Sum := hex.EncodeToString(sum[:]), base64.StdEncoding.EncodeToString(sum[:])
+	wrong := sha256.Sum256([]byte("other"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Hex", hexSum)
+		w.Header().Set("X-Amz-Checksum-Sha256", b64Sum)
+		w.Header().Set("Content-Digest", "sha-512=:AAAA:, sha-256=:"+b64Sum+":")
+		w.Header().Set("Digest", "SHA-256="+b64Sum)
+		w.Header().Set("X-Wrong", hex.EncodeToString(wrong[:]))
+		w.Header().Set("X-Garbage", "md5=abc")
+		_, _ = io.WriteString(w, content)
+	}))
+	defer srv.Close()
+
+	for _, h := range []string{"X-Hex", "X-Amz-Checksum-Sha256", "Content-Digest", "Digest"} {
+		c := config(t, "url: "+srv.URL+"\nassert: {sha256_header: "+h+"}")
+		if !(Module{}).IsTransfer(c) {
+			t.Errorf("%s: a header checksum makes the step a transfer", h)
+		}
+		if err := run(t, nil, c).Err; err != nil {
+			t.Errorf("%s: %v", h, err)
+		}
+	}
+	both := run(t, nil, config(t, "url: "+srv.URL+"\nassert: {sha256: "+hexSum+", sha256_header: Content-Digest}"))
+	if both.Err != nil {
+		t.Errorf("sha256 and sha256_header together: %v", both.Err)
+	}
+	for h, want := range map[string]string{
+		"X-Wrong":   "but header X-Wrong says " + hex.EncodeToString(wrong[:]),
+		"X-Garbage": "not a SHA-256 digest",
+		"X-Missing": "header X-Missing not in response",
+	} {
+		err := run(t, nil, config(t, "url: "+srv.URL+"\nassert: {sha256_header: "+h+"}")).Err
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: err = %v, want %q", h, err, want)
+		}
+	}
+}
+
+func TestTrailingDataIsNotJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"a":1} trailing`)
+	}))
+	defer srv.Close()
+	err := run(t, nil, config(t, "url: "+srv.URL+"\ncapture: {a: {jsonpath: $.a}}")).Err
+	if err == nil || !strings.Contains(err.Error(), "data after the first value") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestLargeIntegerCapturedExactly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"id":9007199254740993}`)
+	}))
+	defer srv.Close()
+	res := run(t, nil, config(t, "url: "+srv.URL+"\ncapture: {id: {jsonpath: $.id}}"))
+	if res.Err != nil || fmt.Sprint(res.Captured["id"].Raw) != "9007199254740993" {
+		t.Errorf("id = %v, err %v", res.Captured["id"].Raw, res.Err)
 	}
 }

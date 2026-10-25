@@ -6,8 +6,10 @@ package main
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"io"
 	"log/slog"
@@ -151,19 +153,41 @@ func (s *server) list(w http.ResponseWriter, _ *http.Request, _ string) {
 }
 
 func (s *server) create(w http.ResponseWriter, r *http.Request, _ string) {
+	// Stream the parts: FormFile would copy the file twice and spill big
+	// uploads to temp files, which a read-only root filesystem refuses.
 	r.Body = http.MaxBytesReader(w, r.Body, maxUpload)
-	f, _, err := r.FormFile("file")
-	if err != nil {
-		fail(w, http.StatusBadRequest, "multipart field file: "+err.Error())
-		return
-	}
-	data, err := io.ReadAll(f)
+	mr, err := r.MultipartReader()
 	if err != nil {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sum := sha256.Sum256(data)
-	p := &project{ID: newID(), Name: r.FormValue("name"), Size: len(data), SHA256: hex.EncodeToString(sum[:]), data: data}
+	p := &project{ID: newID()}
+	h := sha256.New()
+	for {
+		part, err := mr.NextPart()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			fail(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		switch part.FormName() {
+		case "name":
+			b, _ := io.ReadAll(io.LimitReader(part, 256))
+			p.Name = string(b)
+		case "file":
+			if p.data, err = io.ReadAll(io.TeeReader(part, h)); err != nil {
+				fail(w, http.StatusBadRequest, err.Error())
+				return
+			}
+		}
+	}
+	if p.data == nil {
+		fail(w, http.StatusBadRequest, "multipart field file is required")
+		return
+	}
+	p.Size, p.SHA256 = len(p.data), hex.EncodeToString(h.Sum(nil))
 	s.mu.Lock()
 	s.projects[p.ID] = p
 	s.mu.Unlock()
@@ -198,6 +222,9 @@ func (s *server) file(w http.ResponseWriter, r *http.Request, _ string) {
 	if s.corrupt.Load() && len(data) > 0 {
 		data = append([]byte{data[0] ^ 0xff}, data[1:]...)
 	}
+	sum, _ := hex.DecodeString(p.SHA256)
+	// RFC 9530: the digest of what was stored, so a corrupted transfer is caught too.
+	w.Header().Set("Content-Digest", "sha-256=:"+base64.StdEncoding.EncodeToString(sum)+":")
 	w.Header().Set("Content-Type", "application/zip")
 	_, _ = w.Write(data)
 }
