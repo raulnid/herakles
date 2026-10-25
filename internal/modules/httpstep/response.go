@@ -62,7 +62,7 @@ func (rb *respBody) excerpt() string {
 		}
 		return r
 	}, string(b))
-	return "; body: " + strings.ToValidUTF8(s, "?")
+	return "; body: " + strings.TrimSpace(strings.ToValidUTF8(s, "?"))
 }
 
 type prefix struct {

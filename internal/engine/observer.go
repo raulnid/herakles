@@ -25,7 +25,8 @@ type StepReport struct {
 	Status                           Status
 	Reason                           string // redacted error or skip reason
 	Duration                         time.Duration
-	Captured                         []string // names only, never values
+	Needs                            []string // variables the step reads
+	Captured                         []string // variables the step set; names only, never values
 	Phases                           map[string]time.Duration
 	Transfers                        []module.Transfer
 }

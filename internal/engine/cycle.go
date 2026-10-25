@@ -112,6 +112,7 @@ func (r *run) step(ctx context.Context, l config.Labor, s config.Step, n, total 
 		Target: r.target.Name, Labor: l.Name, Step: s.Name, Description: s.Description,
 		N: n, Total: total, Finally: n == 0, Optional: s.Optional,
 	}
+	rep.Needs, _ = tmpl.NodeRefs(&s.Config) // a malformed template fails in Render below
 	end := func(st Status, reason string) StepReport {
 		rep.Status, rep.Reason = st, reason
 		r.e.obs.StepEnd(rep)

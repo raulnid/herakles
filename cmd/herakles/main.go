@@ -3,15 +3,25 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/raulnid/herakles/internal/config"
 	"github.com/raulnid/herakles/internal/engine"
+	"github.com/raulnid/herakles/internal/logfmt"
+	"github.com/raulnid/herakles/internal/metrics"
 	_ "github.com/raulnid/herakles/internal/modules/httpstep"
 )
 
@@ -61,13 +71,49 @@ func run(args []string, stderr io.Writer) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	e := engine.New(cfg, nil)
+	log := slog.New(logfmt.NewHandler(stderr, slog.LevelInfo))
+	slog.SetDefault(log)
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	e := engine.New(cfg, engine.Observers{logfmt.NewObserver(log), metrics.New(reg)})
+
 	if *once {
 		if !e.Once(ctx) {
 			return 1
 		}
 		return 0
 	}
-	e.Run(ctx)
-	return 0
+	return serve(ctx, stop, cfg, reg, func() { e.Run(ctx) })
+}
+
+// serve exposes /metrics and /health while runEngine works. /health only says
+// the process is alive: probe results must not make Kubernetes restart it.
+func serve(ctx context.Context, stop func(), cfg *config.Config, reg *prometheus.Registry, runEngine func()) int {
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok\n") })
+	srv := &http.Server{Addr: cfg.Listen, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+
+	failed := make(chan error, 1)
+	go func() {
+		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			failed <- err
+			stop()
+		}
+	}()
+	slog.Info(fmt.Sprintf("herakles started: %d targets, %d labors, every %s, metrics on %s",
+		len(cfg.Targets), len(cfg.Labors), cfg.Interval, cfg.Listen))
+	runEngine()
+
+	shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	_ = srv.Shutdown(shutdown)
+	select {
+	case err := <-failed:
+		slog.Error("metrics server: " + err.Error())
+		return 1
+	default:
+		slog.Info("herakles stopped")
+		return 0
+	}
 }
