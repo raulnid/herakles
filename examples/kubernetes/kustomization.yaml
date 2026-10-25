@@ -1,0 +1,20 @@
+# kubectl apply -k examples/kubernetes
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: herakles-demo
+resources:
+  - namespace.yaml
+  - secret.yaml
+  - deployment.yaml
+  - service.yaml
+  - eurystheus.yaml
+configMapGenerator:
+  # The name gets a content hash, so editing herakles.yaml rolls the pod.
+  - name: herakles-config
+    files:
+      - herakles.yaml
+images:
+  - name: ghcr.io/raulnid/herakles
+    newTag: 0.1.0
+  - name: ghcr.io/raulnid/herakles-eurystheus
+    newTag: 0.1.0

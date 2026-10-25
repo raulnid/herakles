@@ -2,6 +2,7 @@
 package tmpl
 
 import (
+	"slices"
 	"strings"
 	"text/template"
 	"text/template/parse"
@@ -84,13 +85,17 @@ func walkBranch(b *parse.BranchNode, walk func(parse.Node)) {
 	walk(b.ElseList)
 }
 
-// NodeRefs returns the variable names referenced anywhere under n, or the
-// first malformed template.
+// NodeRefs returns the variable names referenced anywhere under n, once each
+// in order of first use, or the first malformed template.
 func NodeRefs(n *yaml.Node) ([]string, error) {
 	var out []string
 	err := eachTemplate(n, func(s *yaml.Node) error {
 		r, err := Refs(s.Value)
-		out = append(out, r...)
+		for _, name := range r {
+			if !slices.Contains(out, name) {
+				out = append(out, name)
+			}
+		}
 		return err
 	})
 	return out, err

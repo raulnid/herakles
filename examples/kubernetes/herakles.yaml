@@ -1,0 +1,125 @@
+# Config mounted into the herakles pod by the kustomization (configMapGenerator).
+# Same journey as examples/herakles.yaml, against the in-cluster mock.
+interval: 30s
+
+vars:
+  # Secrets never live in this file: they are read from a file (a mounted
+  # Secret in Kubernetes) or an environment variable, again every cycle.
+  api_key: {file: /etc/herakles/secrets/api-key}
+
+targets:
+  - name: dev
+    vars:
+      base_url: {value: "http://eurystheus:8080"}
+  # Same labors, read-only: every step marked mutating is skipped.
+  - name: prod
+    safe: true
+    vars:
+      base_url: {value: "http://eurystheus:8080"}
+
+labors:
+  - name: login
+    steps:
+      - name: token
+        description: Exchange the API key for a session token
+        http:
+          method: POST
+          url: "{{ .vars.base_url }}/auth/token"
+          body: {json: {api_key: "{{ .vars.api_key }}"}}
+          capture:
+            token: {jsonpath: $.token, secret: true}
+      - name: whoami
+        description: The token opens a session
+        http:
+          url: "{{ .vars.base_url }}/auth/me"
+          headers: {Authorization: "Bearer {{ .vars.token }}"}
+          assert:
+            jsonpath: {$.user: synthetic}
+      - name: no-token-rejected
+        description: Without a token the API refuses
+        optional: true
+        http:
+          url: "{{ .vars.base_url }}/projects"
+          assert: {status: [401, 403]}
+
+  - name: projects
+    steps:
+      - name: list
+        description: List projects with the session
+        http:
+          url: "{{ .vars.base_url }}/projects"
+          headers: {Authorization: "Bearer {{ .vars.token }}"}
+      - name: upload
+        description: Upload a 5 MiB zip of random content
+        mutating: true
+        http:
+          method: POST
+          url: "{{ .vars.base_url }}/projects"
+          headers: {Authorization: "Bearer {{ .vars.token }}"}
+          body:
+            multipart:
+              name: "synthetic-{{ .cycle.id }}"
+              file: {payload: {kind: zip, size: 5MiB, as: upload}}
+          assert: {status: [201]}
+          capture:
+            project_id: {jsonpath: $.id}
+      - name: download
+        description: The stored file matches the upload byte for byte
+        http:
+          url: "{{ .vars.base_url }}/projects/{{ .vars.project_id }}/file"
+          headers: {Authorization: "Bearer {{ .vars.token }}"}
+          assert:
+            sha256: "{{ .vars.upload.sha256 }}"
+            size: "{{ .vars.upload.size }}"
+      - name: rename
+        description: Edit the project metadata
+        mutating: true
+        http:
+          method: PATCH
+          url: "{{ .vars.base_url }}/projects/{{ .vars.project_id }}"
+          headers: {Authorization: "Bearer {{ .vars.token }}"}
+          body: {json: {name: "synthetic-{{ .cycle.id }}-renamed"}}
+          assert:
+            jsonpath: {$.name: "synthetic-{{ .cycle.id }}-renamed"}
+      - name: delete
+        mutating: true
+        http:
+          method: DELETE
+          url: "{{ .vars.base_url }}/projects/{{ .vars.project_id }}"
+          headers: {Authorization: "Bearer {{ .vars.token }}"}
+          assert: {status: [204]}
+      - name: gone
+        description: The project no longer exists
+        http:
+          url: "{{ .vars.base_url }}/projects/{{ .vars.project_id }}"
+          headers: {Authorization: "Bearer {{ .vars.token }}"}
+          assert: {status: [404]}
+    finally:
+      # Runs even if a step above failed; skipped when nothing was created.
+      - name: cleanup
+        description: Delete the project if the labor stopped before delete
+        optional: true
+        mutating: true
+        http:
+          method: DELETE
+          url: "{{ .vars.base_url }}/projects/{{ .vars.project_id }}"
+          headers: {Authorization: "Bearer {{ .vars.token }}"}
+          assert: {status: [204, 404]}
+
+  - name: logout
+    finalizer: true
+    steps:
+      - name: logout
+        description: Close the session
+        http:
+          method: POST
+          url: "{{ .vars.base_url }}/auth/logout"
+          headers: {Authorization: "Bearer {{ .vars.token }}"}
+          assert: {status: [204]}
+      - name: token-revoked
+        description: The closed token no longer works
+        optional: true
+        http:
+          url: "{{ .vars.base_url }}/auth/me"
+          headers: {Authorization: "Bearer {{ .vars.token }}"}
+          assert: {status: [401]}

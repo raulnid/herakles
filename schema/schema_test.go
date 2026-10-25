@@ -42,7 +42,7 @@ func validate(s *jsonschema.Schema, src []byte) error {
 func TestExamplesMatchSchema(t *testing.T) {
 	s := compile(t)
 	files, _ := filepath.Glob("../examples/*.yaml")
-	files = append(files, "../internal/config/testdata/valid.yaml")
+	files = append(files, "../internal/config/testdata/valid.yaml", "../examples/kubernetes/herakles.yaml")
 	for _, f := range files {
 		src, err := os.ReadFile(f)
 		if err != nil {

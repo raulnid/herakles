@@ -1,0 +1,14 @@
+# Needs the Prometheus Operator CRDs (e.g. kube-prometheus-stack). Add the
+# label your Prometheus selects on, such as release: kube-prometheus-stack.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: herakles
+  namespace: herakles-demo
+  labels: {app.kubernetes.io/name: herakles}
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/name: herakles}
+  endpoints:
+    - port: metrics
+      interval: 30s

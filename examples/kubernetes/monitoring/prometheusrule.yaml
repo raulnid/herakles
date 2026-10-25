@@ -1,0 +1,50 @@
+# Example alerts. Tune the "for" windows to your interval: with 30s cycles,
+# 5m is about 10 failed cycles in a row.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: herakles
+  namespace: herakles-demo
+  labels: {app.kubernetes.io/name: herakles}
+spec:
+  groups:
+    - name: herakles
+      rules:
+        - alert: HeraklesLaborFailing
+          expr: herakles_labor_success == 0
+          for: 5m
+          labels: {severity: critical}
+          annotations:
+            summary: "Labor {{ $labels.labor }} fails on {{ $labels.target }}"
+            description: 'Failing step: check herakles_labor_failed_step{target="{{ $labels.target }}",labor="{{ $labels.labor }}"} == 1 and the herakles logs.'
+        - alert: HeraklesLaborStale
+          # Also fires when the probe is down or an earlier labor keeps this one skipped.
+          expr: time() - herakles_labor_last_success_timestamp_seconds > 900
+          labels: {severity: critical}
+          annotations:
+            summary: "Labor {{ $labels.labor }} on {{ $labels.target }} has not passed for 15 minutes"
+        - alert: HeraklesCycleFailing
+          # Catches what labor alerts cannot, such as an unreadable secret file.
+          expr: herakles_cycle_success == 0
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: "Cycles on {{ $labels.target }} keep failing"
+        - alert: HeraklesStepFailing
+          # Optional steps included.
+          expr: herakles_step_success == 0
+          for: 15m
+          labels: {severity: warning}
+          annotations:
+            summary: "Step {{ $labels.labor }}/{{ $labels.step }} fails on {{ $labels.target }}"
+        - alert: HeraklesStepSlow
+          expr: quantile_over_time(0.95, herakles_step_last_duration_seconds[15m]) > 5
+          for: 15m
+          labels: {severity: warning}
+          annotations:
+            summary: "p95 of {{ $labels.labor }}/{{ $labels.step }} on {{ $labels.target }} is over 5s"
+        - alert: HeraklesTransferSlow
+          expr: max_over_time(herakles_transfer_bytes_per_second[15m]) < 1e6
+          labels: {severity: warning}
+          annotations:
+            summary: "{{ $labels.direction }} on {{ $labels.target }} below 1 MB/s for 15 minutes"

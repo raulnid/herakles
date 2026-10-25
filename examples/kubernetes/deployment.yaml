@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: herakles
+  labels: {app.kubernetes.io/name: herakles}
+spec:
+  # One replica by design: two probes would run mutating steps concurrently
+  # and step on each other. Recreate keeps rollouts from overlapping too.
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app.kubernetes.io/name: herakles}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: herakles}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      # Leaves time for finally blocks and finalizers (logout) after SIGTERM.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: herakles
+          image: ghcr.io/raulnid/herakles
+          args: [run, -config, /etc/herakles/config/herakles.yaml]
+          ports:
+            - {name: metrics, containerPort: 9090}
+          livenessProbe:
+            httpGet: {path: /health, port: metrics}
+          readinessProbe:
+            httpGet: {path: /health, port: metrics}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: config, mountPath: /etc/herakles/config, readOnly: true}
+            - {name: secrets, mountPath: /etc/herakles/secrets, readOnly: true}
+      volumes:
+        - name: config
+          configMap: {name: herakles-config}
+        - name: secrets
+          secret: {secretName: herakles-api-key}

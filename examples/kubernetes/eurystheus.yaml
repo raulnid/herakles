@@ -1,0 +1,45 @@
+# The demo API herakles probes. Replace with your own service.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eurystheus
+  labels: {app.kubernetes.io/name: eurystheus}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: eurystheus}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: eurystheus}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: eurystheus
+          image: ghcr.io/raulnid/herakles-eurystheus
+          ports:
+            - {name: http, containerPort: 8080}
+          env:
+            - name: EURYSTHEUS_API_KEY
+              valueFrom:
+                secretKeyRef: {name: herakles-api-key, key: api-key}
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eurystheus
+spec:
+  selector: {app.kubernetes.io/name: eurystheus}
+  ports:
+    - {name: http, port: 8080, targetPort: http}

@@ -133,7 +133,7 @@ func TestRefs(t *testing.T) {
 }
 
 func TestNodeRefs(t *testing.T) {
-	got, err := NodeRefs(node(t, `{url: "{{ .vars.base }}/x", body: {json: {k: "{{ .vars.key }}", n: 3}}}`))
+	got, err := NodeRefs(node(t, `{url: "{{ .vars.base }}/x", body: {json: {k: "{{ .vars.key }}", n: 3, again: "{{ .vars.base }}"}}}`))
 	if err != nil || !reflect.DeepEqual(got, []string{"base", "key"}) {
 		t.Errorf("NodeRefs = %v, %v", got, err)
 	}
