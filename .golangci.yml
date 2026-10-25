@@ -1,0 +1,24 @@
+version: "2"
+linters:
+  # Defaults (errcheck, govet, ineffassign, staticcheck, unused) plus:
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (io.Closer).Close # closing readers: nothing useful to do with the error
+    gosec:
+      excludes:
+        - G304 # reading files named in the operator's own config is the point
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [gosec, errcheck]
+formatters:
+  enable:
+    - gofmt

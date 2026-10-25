@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -51,6 +52,10 @@ func lookup(name string) (Kind, bool) {
 	return k, ok
 }
 
+// MaxSize bounds payloads: a probe never needs more, and it keeps PNG
+// dimensions within their 32-bit fields.
+const MaxSize = 4 << 30
+
 // Spec is the YAML form: {kind: zip, size: 5MiB, as: upload}.
 type Spec struct {
 	Kind string `yaml:"kind"`
@@ -66,8 +71,8 @@ func (s *Spec) Validate() error {
 	if _, ok := lookup(s.Kind); !ok {
 		return fmt.Errorf("payload: unknown kind %q", s.Kind)
 	}
-	if s.Size <= 0 {
-		return fmt.Errorf("payload: size must be > 0")
+	if s.Size <= 0 || s.Size > MaxSize {
+		return fmt.Errorf("payload: size must be between 1 byte and 4GiB")
 	}
 	return nil
 }
@@ -107,7 +112,7 @@ func (st *Stream) Read(p []byte) (int, error) {
 	st.mu.Lock()
 	st.h.Write(p[:n])
 	st.n += int64(n)
-	st.eof = st.eof || err == io.EOF
+	st.eof = st.eof || errors.Is(err, io.EOF)
 	st.mu.Unlock()
 	return n, err
 }

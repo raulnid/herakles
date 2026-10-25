@@ -86,8 +86,8 @@ func refsOf(t *template.Template) []string {
 			walkBranch(&n.BranchNode, walk)
 		}
 	}
-	if t.Tree != nil {
-		walk(t.Tree.Root)
+	if t.Tree != nil { //nolint:staticcheck // nil check needs the field
+		walk(t.Root)
 	}
 	return out
 }

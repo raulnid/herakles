@@ -43,7 +43,7 @@ func (e *Engine) cycle(ctx context.Context, t config.Target) bool {
 	}
 	r := &run{
 		e: e, target: t, vars: v,
-		cycle:       map[string]any{"id": fmt.Sprintf("%08x", rand.Uint32()), "start": start.Unix()},
+		cycle:       map[string]any{"id": fmt.Sprintf("%08x", rand.Uint32()), "start": start.Unix()}, //nolint:gosec // an id for resource names, not a secret
 		client:      client,
 		unavailable: map[string]bool{},
 	}
@@ -148,7 +148,7 @@ func (r *run) step(ctx context.Context, l config.Labor, s config.Step, n, total 
 	}
 
 	timeout := r.e.cfg.StepTimeout
-	if tr, ok := m.(module.Transferer); ok && tr.IsTransfer(cfg) {
+	if tr, ok := m.(module.BulkTransfer); ok && tr.IsTransfer(cfg) {
 		timeout = r.e.cfg.TransferTimeout
 	}
 	sctx, cancel := context.WithTimeout(ctx, timeout)

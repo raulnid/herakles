@@ -37,8 +37,8 @@ type (
 	// Outputs names the variables a step will set, so validate can check
 	// references and the runner can skip steps whose inputs were skipped.
 	Outputs interface{ Outputs(cfg any) []string }
-	// Transferer reports steps that move bulk data and get transfer_timeout.
-	Transferer interface{ IsTransfer(cfg any) bool }
+	// BulkTransfer reports steps that move bulk data and get transfer_timeout.
+	BulkTransfer interface{ IsTransfer(cfg any) bool }
 )
 
 // Env is what the core hands to a step. Vars is read-only for modules: new

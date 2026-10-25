@@ -107,7 +107,7 @@ func serve(ctx context.Context, stop func(), cfg *config.Config, reg *prometheus
 			stop()
 		}
 	}()
-	slog.Info(fmt.Sprintf("herakles started: %d targets, %d labors, every %s, metrics on %s",
+	slog.Info(fmt.Sprintf("herakles started: %d targets, %d labors, every %s, metrics on %s", //nolint:gosec // operator config, not user input
 		len(cfg.Targets), len(cfg.Labors), cfg.Interval, cfg.Listen))
 	runEngine()
 

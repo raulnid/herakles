@@ -78,7 +78,7 @@ func Static(n *yaml.Node) *yaml.Node {
 // soleValue returns the value of a template made of a single field such as
 // {{ .vars.a.b }}, looked up through nested maps.
 func soleValue(t *template.Template, data map[string]any) (any, bool) {
-	root := t.Tree.Root
+	root := t.Root
 	if len(root.Nodes) != 1 {
 		return nil, false
 	}

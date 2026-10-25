@@ -134,7 +134,7 @@ func (b *reqBody) stats() (int64, time.Time) {
 // Close stops streaming producers when the transport gives up early.
 func (b *reqBody) Close() error {
 	for _, st := range b.streams {
-		st.Close()
+		_ = st.Close()
 	}
 	if c, ok := b.r.(io.Closer); ok {
 		return c.Close()
@@ -164,7 +164,7 @@ func (b *Body) build() (*reqBody, error) {
 	for _, sp := range b.payloads() {
 		st, err := sp.Open()
 		if err != nil {
-			rb.Close()
+			_ = rb.Close()
 			return nil, err
 		}
 		rb.streams[sp] = st

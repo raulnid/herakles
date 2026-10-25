@@ -121,7 +121,7 @@ func (m Module) Run(ctx context.Context, cfg any, env *module.Env) module.Result
 	method := orDefault(strings.ToUpper(c.Method), http.MethodGet)
 	req, err := http.NewRequestWithContext(httptrace.WithClientTrace(ctx, tr.clientTrace()), method, c.URL, reqBody)
 	if err != nil {
-		body.Close()
+		_ = body.Close()
 		return module.Result{Err: err}
 	}
 	req.ContentLength = body.length

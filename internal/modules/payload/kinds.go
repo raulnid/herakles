@@ -48,9 +48,9 @@ func writePNG(w io.Writer, size int64, rng io.Reader) error {
 		return err
 	}
 	ihdr := make([]byte, 13)
-	binary.BigEndian.PutUint32(ihdr[0:], uint32(width))
-	binary.BigEndian.PutUint32(ihdr[4:], uint32(height))
-	ihdr[8], ihdr[9] = 8, 2 // 8-bit depth, RGB; compression, filter and interlace stay 0
+	binary.BigEndian.PutUint32(ihdr[0:], uint32(width))  //nolint:gosec // width <= 1024
+	binary.BigEndian.PutUint32(ihdr[4:], uint32(height)) //nolint:gosec // height <= MaxSize/3/1024
+	ihdr[8], ihdr[9] = 8, 2                              // 8-bit depth, RGB; compression, filter and interlace stay 0
 	if err := writeChunk(bw, "IHDR", ihdr); err != nil {
 		return err
 	}
@@ -83,11 +83,11 @@ func writePNG(w io.Writer, size int64, rng io.Reader) error {
 
 func writeChunk(w io.Writer, typ string, data []byte) error {
 	var hdr [8]byte
-	binary.BigEndian.PutUint32(hdr[:4], uint32(len(data)))
+	binary.BigEndian.PutUint32(hdr[:4], uint32(len(data))) //nolint:gosec // chunks are at most 64 KiB
 	copy(hdr[4:], typ)
 	crc := crc32.NewIEEE()
-	crc.Write(hdr[4:])
-	crc.Write(data)
+	_, _ = crc.Write(hdr[4:]) // hash writes never fail
+	_, _ = crc.Write(data)
 	var sum [4]byte
 	binary.BigEndian.PutUint32(sum[:], crc.Sum32())
 	for _, b := range [][]byte{hdr[:], data, sum[:]} {
