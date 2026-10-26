@@ -21,8 +21,6 @@ const (
 	KeyStep   = "step"
 )
 
-var widths = map[string]int{KeyTarget: 8, KeyLabor: 14, KeyPos: 5, KeyStep: 22}
-
 type Handler struct {
 	mu    *sync.Mutex
 	w     io.Writer
@@ -37,12 +35,20 @@ func NewHandler(w io.Writer, level slog.Leveler) *Handler {
 func (h *Handler) Enabled(_ context.Context, l slog.Level) bool { return l >= h.level.Level() }
 
 func (h *Handler) Handle(_ context.Context, r slog.Record) error {
-	zone := map[string]string{}
+	var target, labor, pos, step string
 	var rest strings.Builder
 	add := func(a slog.Attr) bool {
-		if _, ok := widths[a.Key]; ok {
-			zone[a.Key] = a.Value.String()
-		} else if a.Key != "" {
+		switch a.Key {
+		case KeyTarget:
+			target = a.Value.String()
+		case KeyLabor:
+			labor = a.Value.String()
+		case KeyPos:
+			pos = a.Value.String()
+		case KeyStep:
+			step = a.Value.String()
+		case "":
+		default:
 			fmt.Fprintf(&rest, " %s=%s", a.Key, a.Value)
 		}
 		return true
@@ -53,9 +59,7 @@ func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 	r.Attrs(add)
 
 	line := fmt.Sprintf("%s %-5s %s %s %s %s | %s%s\n",
-		r.Time.Format("15:04:05.000"), r.Level,
-		fit(zone[KeyTarget], widths[KeyTarget]), fit(zone[KeyLabor], widths[KeyLabor]),
-		fit(zone[KeyPos], widths[KeyPos]), fit(zone[KeyStep], widths[KeyStep]),
+		r.Time.Format("15:04:05.000"), r.Level, fit(target, 8), fit(labor, 14), fit(pos, 5), fit(step, 22),
 		r.Message, rest.String())
 	h.mu.Lock()
 	defer h.mu.Unlock()

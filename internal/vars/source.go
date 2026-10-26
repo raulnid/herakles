@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/raulnid/herakles/internal/config"
@@ -22,7 +23,8 @@ func Resolve(global, target map[string]config.Var) (*Vars, error) {
 
 	v := New()
 	var errs []error
-	for name, src := range all {
+	for _, name := range slices.Sorted(maps.Keys(all)) { // stable error order
+		src := all[name]
 		var raw any
 		switch {
 		case src.File != "":
