@@ -14,6 +14,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/raulnid/herakles/internal/module"
 	"github.com/raulnid/herakles/internal/modules/payload"
 	"github.com/raulnid/herakles/internal/vars"
 )
@@ -63,8 +64,7 @@ func (b *Body) validate() error {
 		}
 	}
 	for _, sp := range b.payloads() {
-		// An empty kind is a template, checked when it renders.
-		if sp.Kind != "" && !payload.Known(sp.Kind) {
+		if !module.Templated(sp.Kind) && !payload.Known(sp.Kind) {
 			errs = append(errs, fmt.Errorf("body: unknown payload kind %q", sp.Kind))
 		}
 	}
@@ -198,6 +198,9 @@ func (b *Body) writeParts(mw *multipart.Writer, streams map[*payload.Spec]*paylo
 		filename, ctype := p.Filename, p.ContentType
 		if p.Payload != nil {
 			filename, ctype = orDefault(filename, p.Payload.Filename()), orDefault(ctype, p.Payload.ContentType())
+		}
+		if strings.ContainsAny(ctype, "\r\n") {
+			return fmt.Errorf("multipart %q: content type contains a line break", name)
 		}
 		var w io.Writer
 		var err error

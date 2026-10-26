@@ -92,24 +92,27 @@ func (Module) Validate(cfg any) error {
 		if n != 1 {
 			errs = append(errs, fmt.Errorf("capture %q: exactly one of jsonpath, header or status is required", name))
 		}
-		if cp.JSONPath != "" {
+		if cp.JSONPath != "" && !module.Templated(cp.JSONPath) {
 			if _, err := compile(cp.JSONPath); err != nil {
 				errs = append(errs, fmt.Errorf("capture %q: jsonpath: %w", name, err))
 			}
 		}
 	}
-	if s := c.Assert.SHA256; s != "" {
+	if s := c.Assert.SHA256; s != "" && !module.Templated(s) {
 		if b, err := hex.DecodeString(s); err != nil || len(b) != sha256.Size {
 			errs = append(errs, fmt.Errorf("assert sha256 %q: want 64 hex characters", s))
 		}
 	}
 	for path := range c.Assert.JSONPath {
+		if module.Templated(path) {
+			continue
+		}
 		if _, err := compile(path); err != nil {
 			errs = append(errs, fmt.Errorf("assert jsonpath %q: %w", path, err))
 		}
 	}
 	for _, s := range c.Assert.Status {
-		if s < 100 || s > 599 {
+		if s != 0 && (s < 100 || s > 599) { // 0: templated, unknown until run time
 			errs = append(errs, fmt.Errorf("assert status %d: not an HTTP status code", s))
 		}
 	}
@@ -145,7 +148,7 @@ func (Module) Run(ctx context.Context, cfg any, env *module.Env) module.Result {
 	}
 
 	tr.begin()
-	resp, err := env.HTTPClient.Do(req)
+	resp, err := withSafeRedirects(env).Do(req)
 	if err != nil {
 		return module.Result{Err: err, Phases: tr.phases(time.Now())}
 	}
@@ -270,4 +273,30 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	slices.Sort(keys)
 	return keys
+}
+
+// withSafeRedirects shares the cycle's transport and cookies but, on a
+// redirect to another host, drops every header that carries a secret. Go
+// itself only drops Authorization and Cookie, so a custom X-Api-Key header
+// would otherwise follow the redirect.
+func withSafeRedirects(env *module.Env) *http.Client {
+	c := *env.HTTPClient
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		if env.Vars == nil || req.URL.Host == via[0].URL.Host {
+			return nil
+		}
+		for k, vs := range req.Header {
+			for _, v := range vs {
+				if env.Vars.Redact(v) != v {
+					req.Header.Del(k)
+					break
+				}
+			}
+		}
+		return nil
+	}
+	return &c
 }

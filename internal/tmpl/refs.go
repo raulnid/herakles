@@ -2,6 +2,7 @@
 package tmpl
 
 import (
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -11,6 +12,10 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
+// funcs adds pathescape for values placed in a URL path; text/template has
+// urlquery built in for query strings.
+var funcs = template.FuncMap{"pathescape": url.PathEscape}
+
 // parsed caches templates by source: configs never change at runtime, so
 // each template is parsed once. Parsed templates are safe for concurrent use.
 var parsed sync.Map
@@ -19,7 +24,7 @@ func parseTemplate(src string) (*template.Template, error) {
 	if t, ok := parsed.Load(src); ok {
 		return t.(*template.Template), nil
 	}
-	t, err := template.New("").Option("missingkey=error").Parse(src)
+	t, err := template.New("").Option("missingkey=error").Funcs(funcs).Parse(src)
 	if err != nil {
 		return nil, err
 	}

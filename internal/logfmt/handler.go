@@ -21,6 +21,9 @@ const (
 	KeyStep   = "step"
 )
 
+// oneLine keeps every event on one line, whatever an error message carries.
+var oneLine = strings.NewReplacer("\r\n", "; ", "\n", "; ", "\r", " ")
+
 type Handler struct {
 	mu    *sync.Mutex
 	w     io.Writer
@@ -40,16 +43,16 @@ func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 	add := func(a slog.Attr) bool {
 		switch a.Key {
 		case KeyTarget:
-			target = a.Value.String()
+			target = oneLine.Replace(a.Value.String())
 		case KeyLabor:
-			labor = a.Value.String()
+			labor = oneLine.Replace(a.Value.String())
 		case KeyPos:
-			pos = a.Value.String()
+			pos = oneLine.Replace(a.Value.String())
 		case KeyStep:
-			step = a.Value.String()
+			step = oneLine.Replace(a.Value.String())
 		case "":
 		default:
-			fmt.Fprintf(&rest, " %s=%s", a.Key, a.Value)
+			fmt.Fprintf(&rest, " %s=%s", a.Key, oneLine.Replace(a.Value.String()))
 		}
 		return true
 	}
@@ -60,7 +63,7 @@ func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 
 	line := fmt.Sprintf("%s %-5s %s %s %s %s | %s%s\n",
 		r.Time.Format("15:04:05.000"), r.Level, fit(target, 8), fit(labor, 14), fit(pos, 5), fit(step, 22),
-		r.Message, rest.String())
+		oneLine.Replace(r.Message), rest.String())
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	_, err := io.WriteString(h.w, line)

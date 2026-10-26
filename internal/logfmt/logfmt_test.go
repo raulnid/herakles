@@ -129,3 +129,12 @@ labors:
 		t.Errorf("expected redacted failures in the log:\n%s", out)
 	}
 }
+
+func TestOneLinePerEvent(t *testing.T) {
+	var buf bytes.Buffer
+	l := slog.New(NewHandler(&buf, slog.LevelInfo))
+	l.With("step", "a\nb").Info("first\nINFO  forged line", "k", "v\r\nforged")
+	if n := strings.Count(buf.String(), "\n"); n != 1 {
+		t.Errorf("one event wrote %d lines: %q", n, buf.String())
+	}
+}

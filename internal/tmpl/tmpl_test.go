@@ -138,3 +138,17 @@ func TestNodeRefs(t *testing.T) {
 		t.Errorf("NodeRefs = %v, %v", got, err)
 	}
 }
+
+func TestPathEscape(t *testing.T) {
+	out, err := Render(node(t, `url: "http://h/p/{{ .vars.id | pathescape }}?q={{ .vars.id | urlquery }}"`), data(map[string]any{"id": "a/b?c#d e"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got cfg
+	if err := out.Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.URL != "http://h/p/a%2Fb%3Fc%23d%20e?q=a%2Fb%3Fc%23d+e" {
+		t.Errorf("url = %s", got.URL)
+	}
+}

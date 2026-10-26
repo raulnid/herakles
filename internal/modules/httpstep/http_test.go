@@ -433,3 +433,52 @@ func TestLargeIntegerCapturedExactly(t *testing.T) {
 		t.Errorf("id = %v, err %v", res.Captured["id"].Raw, res.Err)
 	}
 }
+
+func TestRedirectToOtherHostDropsSecretHeaders(t *testing.T) {
+	got := make(chan http.Header, 1)
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { got <- r.Header.Clone() }))
+	defer other.Close()
+	same := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/start" {
+			http.Redirect(w, r, "/next", http.StatusFound)
+			return
+		}
+		if r.URL.Path == "/next" {
+			if r.Header.Get("X-Api-Key") == "" {
+				http.Error(w, "same-host redirect lost the key", http.StatusBadRequest)
+			}
+			return
+		}
+		http.Redirect(w, r, other.URL+"/file", http.StatusFound)
+	}))
+	defer same.Close()
+
+	v := vars.New()
+	v.Set("key", vars.Value{Raw: "secret-key-123", Secret: true})
+	env := &module.Env{Vars: v, HTTPClient: &http.Client{}}
+	headers := "headers: {X-Api-Key: secret-key-123, X-Trace: plain}"
+
+	if res := (Module{}).Run(context.Background(), config(t, "url: "+same.URL+"/start\n"+headers), env); res.Err != nil {
+		t.Errorf("same-host redirect: %v", res.Err)
+	}
+	if res := (Module{}).Run(context.Background(), config(t, "url: "+same.URL+"/away\n"+headers), env); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	h := <-got
+	if h.Get("X-Api-Key") != "" || h.Get("X-Trace") != "plain" {
+		t.Errorf("headers sent to the other host: %v", h)
+	}
+}
+
+func TestHeaderAndPartInjectionRejected(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+	err := run(t, nil, config(t, "url: "+srv.URL+"\nheaders: {X-Id: \"1\\r\\nX-Injected: yes\"}")).Err
+	if err == nil || !strings.Contains(err.Error(), "invalid header field value") {
+		t.Errorf("CRLF in a header value: err = %v", err)
+	}
+	err = run(t, nil, config(t, "method: POST\nurl: "+srv.URL+"\nbody: {multipart: {f: {value: x, filename: a.txt, content_type: \"text/plain\\r\\nX-Injected: yes\"}}}")).Err
+	if err == nil || !strings.Contains(err.Error(), "line break") {
+		t.Errorf("CRLF in a part content type: err = %v", err)
+	}
+}
