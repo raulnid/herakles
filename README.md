@@ -127,6 +127,12 @@ in every field of a step config:
 | `{{ .vars.upload.sha256 }}` | A field of a structured variable, such as a payload. |
 | `{{ .target }}` | The target name. |
 | `{{ .cycle.id }}` | A random id per cycle, for unique resource names. |
+| `{{ .vars.id \| pathescape }}` | The value escaped for a URL path segment. |
+| `{{ .vars.q \| urlquery }}` | The value escaped for a query string. |
+
+Values captured from responses are inserted as they are. Escape them when they
+go into a URL, so an id like `a/b?x` cannot change the path or the query:
+`/projects/{{ .vars.project_id | pathescape }}`.
 
 How templates render:
 
@@ -196,6 +202,7 @@ http:
 - **JSONPath** uses the full [JSONPath](https://goessner.net/articles/JsonPath/) syntax via [ojg](https://github.com/ohler55/ojg). A capture takes the first match. Responses used by `jsonpath` are parsed up to 1 MiB.
 - **Downloads** are streamed: the body is hashed and counted as it arrives and never kept whole in memory. The hash is computed only when `sha256` or `sha256_header` is set. See [Verifying downloads](#verifying-downloads).
 - **Error messages** include at most the first 200 bytes of the response body, with every secret masked.
+- **Redirects** are followed, up to 10. On a redirect to another host, every header that carries a secret is dropped, not just `Authorization` and `Cookie` as Go does by default. A presigned storage URL gets the request; your API key does not.
 - **Sessions**: a cycle uses one HTTP client per target, with keep-alive and a cookie jar, like a real client. The connection is reused within the cycle and dropped at its end.
 
 ### Payloads
@@ -328,6 +335,19 @@ never reach the logger, only their names. Error messages pass through a
 redactor that masks every secret, also in its URL-encoded and JSON-escaped
 forms.
 
+## Security
+
+herakles treats its config as trusted: the operator's own input. It treats
+everything that comes back from the probed services as untrusted.
+
+- **Secrets stay out of the config and out of the output.** They are read from files or the environment. Variable values never reach the logger. Every error is masked for each secret, raw, URL-encoded and JSON-escaped.
+- **No template injection.** Templates come only from the config and run once per step. A captured value that contains `{{ ... }}` stays literal text.
+- **No header injection.** Go rejects header values with line breaks, and herakles rejects them in multipart part headers.
+- **No log injection.** Every event is one line: line breaks in messages and attributes are replaced.
+- **No credential leaks on redirects.** Headers carrying secrets are dropped when a redirect leaves the host.
+- **Bounded work.** Every step has a timeout. Response bodies are streamed, and only 1 MiB (for JSONPath) or 200 bytes (for error messages) is kept. A panicking module fails its step, not the process.
+- **The container**, as shipped in the example manifests: static binary on distroless, non-root, read-only root filesystem, no capabilities, no service account token.
+
 ## Running in Kubernetes
 
 [`examples/kubernetes`](examples/kubernetes) has a kustomization with a
@@ -392,7 +412,7 @@ It applies the timeout through `ctx`, measures the duration, and turns the
 
 Optional interfaces:
 
-- `Validator` adds static checks to `herakles validate`, which also runs before `run`. It is not called again per request, so keep runtime checks in `Run` to what a template can break.
+- `Validator` adds static checks to `herakles validate`. Templated string fields hold their template text at that point, and templated typed fields (ints, durations) are zero. Skip format checks on them with `module.Templated(s)`. Validation also runs before `run`. It is not called again per request, so keep runtime checks in `Run` to what a template can break.
 - `Outputs` names the variables a step sets. Validation uses it to check references, and the runner uses it to skip the steps that need the outputs of a skipped step.
 - `BulkTransfer` puts a step under `transfer_timeout`.
 

@@ -70,10 +70,18 @@ labors:
           assert: {status: [201]}
           capture:
             project_id: {jsonpath: $.id}
+      - name: listed
+        description: The new project shows up in the list, so it was stored, not only accepted
+        http:
+          url: "{{ .vars.base_url }}/projects"
+          headers: {Authorization: "Bearer {{ .vars.token }}"}
+          assert:
+            jsonpath:
+              "$[?(@.id == '{{ .vars.project_id }}')].name": "synthetic-{{ .cycle.id }}"
       - name: download
         description: The stored file matches the upload byte for byte
         http:
-          url: "{{ .vars.base_url }}/projects/{{ .vars.project_id }}/file"
+          url: "{{ .vars.base_url }}/projects/{{ .vars.project_id | pathescape }}/file"
           headers: {Authorization: "Bearer {{ .vars.token }}"}
           assert:
             # Against what herakles uploaded, and against the digest the
@@ -86,7 +94,7 @@ labors:
         mutating: true
         http:
           method: PATCH
-          url: "{{ .vars.base_url }}/projects/{{ .vars.project_id }}"
+          url: "{{ .vars.base_url }}/projects/{{ .vars.project_id | pathescape }}"
           headers: {Authorization: "Bearer {{ .vars.token }}"}
           body: {json: {name: "synthetic-{{ .cycle.id }}-renamed"}}
           assert:
@@ -95,13 +103,13 @@ labors:
         mutating: true
         http:
           method: DELETE
-          url: "{{ .vars.base_url }}/projects/{{ .vars.project_id }}"
+          url: "{{ .vars.base_url }}/projects/{{ .vars.project_id | pathescape }}"
           headers: {Authorization: "Bearer {{ .vars.token }}"}
           assert: {status: [204]}
       - name: gone
         description: The project no longer exists
         http:
-          url: "{{ .vars.base_url }}/projects/{{ .vars.project_id }}"
+          url: "{{ .vars.base_url }}/projects/{{ .vars.project_id | pathescape }}"
           headers: {Authorization: "Bearer {{ .vars.token }}"}
           assert: {status: [404]}
     finally:
@@ -112,7 +120,7 @@ labors:
         mutating: true
         http:
           method: DELETE
-          url: "{{ .vars.base_url }}/projects/{{ .vars.project_id }}"
+          url: "{{ .vars.base_url }}/projects/{{ .vars.project_id | pathescape }}"
           headers: {Authorization: "Bearer {{ .vars.token }}"}
           assert: {status: [204, 404]}
 

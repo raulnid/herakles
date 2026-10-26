@@ -78,7 +78,7 @@ func TestExampleJourney(t *testing.T) {
 	if !ok {
 		t.Fatalf("cycle failed:\n%s", log)
 	}
-	for _, step := range []string{"token", "whoami", "no-token-rejected", "list", "upload", "download", "rename", "delete", "gone", "cleanup", "logout", "token-revoked"} {
+	for _, step := range []string{"token", "whoami", "no-token-rejected", "list", "upload", "listed", "download", "rename", "delete", "gone", "cleanup", "logout", "token-revoked"} {
 		labor := map[string]string{"token": "login", "whoami": "login", "no-token-rejected": "login", "logout": "logout", "token-revoked": "logout"}[step]
 		if labor == "" {
 			labor = "projects"
@@ -87,7 +87,7 @@ func TestExampleJourney(t *testing.T) {
 			t.Errorf("dev %s/%s success = %v\n%s", labor, step, v, log)
 		}
 	}
-	for _, step := range []string{"upload", "download", "rename", "delete", "gone", "cleanup"} {
+	for _, step := range []string{"upload", "listed", "download", "rename", "delete", "gone", "cleanup"} {
 		if v := value(t, reg, "herakles_step_skipped", map[string]string{"target": "prod", "step": step}); v != 1 {
 			t.Errorf("prod %s must be skipped on a safe target", step)
 		}
