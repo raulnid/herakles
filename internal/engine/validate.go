@@ -107,7 +107,7 @@ func checkStep(s config.Step) ([]string, error) {
 		return nil, fmt.Errorf("template: %w", err)
 	}
 	cfg := m.NewConfig()
-	if err := module.Decode(tmpl.Static(&s.Config), cfg); err != nil {
+	if err := module.DecodeStatic(&s.Config, cfg); err != nil {
 		return nil, fmt.Errorf("%s: %w", s.Module, err)
 	}
 	var errs []error

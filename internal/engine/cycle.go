@@ -186,7 +186,7 @@ func (r *run) markUnavailable(m module.Module, s *config.Step) {
 		return
 	}
 	cfg := m.NewConfig()
-	if tmpl.Static(&s.Config).Decode(cfg) != nil {
+	if module.DecodeStatic(&s.Config, cfg) != nil {
 		return
 	}
 	for _, name := range o.Outputs(cfg) {

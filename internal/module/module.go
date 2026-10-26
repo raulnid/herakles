@@ -17,6 +17,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -119,4 +120,30 @@ func Decode(n *yaml.Node, cfg any) error {
 		return err
 	}
 	return nil
+}
+
+// Templated reports whether a config string still holds a template. During
+// static validation templated fields keep their source text: they are set,
+// but their value is unknown, so validators skip format checks on them.
+func Templated(s string) bool { return strings.Contains(s, "{{") }
+
+// DecodeStatic decodes an unrendered step config for validation. Templated
+// strings stay as text; a template in a typed field (an int, a duration)
+// leaves that field zero instead of failing.
+func DecodeStatic(n *yaml.Node, cfg any) error {
+	err := Decode(n, cfg)
+	var te *yaml.TypeError
+	if !errors.As(err, &te) {
+		return err
+	}
+	var real []string
+	for _, msg := range te.Errors {
+		if !strings.Contains(msg, "`{{") { // yaml quotes the offending value in backticks
+			real = append(real, msg)
+		}
+	}
+	if len(real) == 0 {
+		return nil
+	}
+	return &yaml.TypeError{Errors: real}
 }

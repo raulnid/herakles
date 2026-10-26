@@ -133,6 +133,9 @@ type Size int64
 var sizeRe = regexp.MustCompile(`^(\d+)\s*([KMG]i?B|B)?$`)
 
 func (s *Size) UnmarshalYAML(n *yaml.Node) error {
+	if strings.Contains(n.Value, "{{") {
+		return nil // unrendered, during validation: the rendered value is checked at run time
+	}
 	m := sizeRe.FindStringSubmatch(strings.TrimSpace(n.Value))
 	if m == nil {
 		return fmt.Errorf("line %d: invalid size %q, want e.g. 512, 10KB or 5MiB", n.Line, n.Value)
