@@ -187,13 +187,14 @@ http:
   assert:
     status: [200, 201]                  # default: any 2xx
     jsonpath: {$.user.id: 7, $.name: "synthetic-{{ .cycle.id }}"}
-    sha256: "{{ .vars.upload.sha256 }}" # hash of the response body
+    sha256: "{{ .vars.upload.sha256 }}" # expected SHA-256 of the response body
+    sha256_header: Content-Digest       # ...and/or the digest the server sends with it
     size: "{{ .vars.upload.size }}"     # length of the response body
 ```
 
 - **Expected failures** use `assert.status`, which replaces the 2xx default. `assert: {status: [401, 403]}` passes only if the request is rejected. That covers "without a token the API refuses" and "a closed token no longer works".
 - **JSONPath** uses the full [JSONPath](https://goessner.net/articles/JsonPath/) syntax via [ojg](https://github.com/ohler55/ojg). A capture takes the first match. Responses used by `jsonpath` are parsed up to 1 MiB.
-- **Downloads** are streamed: the body is hashed and counted as it arrives and never kept whole in memory. The hash is computed only when `assert.sha256` is set.
+- **Downloads** are streamed: the body is hashed and counted as it arrives and never kept whole in memory. The hash is computed only when `sha256` or `sha256_header` is set. See [Verifying downloads](#verifying-downloads).
 - **Error messages** include at most the first 200 bytes of the response body, with every secret masked.
 - **Sessions**: a cycle uses one HTTP client per target, with keep-alive and a cookie jar, like a real client. The connection is reused within the cycle and dropped at its end.
 
@@ -213,6 +214,37 @@ check the download against the upload.
 The content is random and incompressible, so compression along the path cannot
 make a transfer look faster than it is. Sizes accept `1024`, `10KB`, `5MiB` and
 so on, up to 4 GiB.
+
+### Verifying downloads
+
+herakles always hashes the downloaded body (SHA-256, streamed). What it
+compares the hash against is up to you. Combine sources: every one you set
+must match.
+
+| Expected value comes from | Config | Catches |
+|---|---|---|
+| **What herakles uploaded.** The payload's hash, computed while it was sent. | `sha256: "{{ .vars.upload.sha256 }}"` | Anything that changed the bytes between upload and download: storage, proxies, the API. This is the strongest check. |
+| **The upload response.** The server tells you what it stored. | capture `{jsonpath: $.sha256}` on the upload step, then `sha256: "{{ .vars.stored_sha }}"` | A server that stored something other than what it acknowledges. Compare `{{ .vars.upload.sha256 }}` with it in an `assert.jsonpath` to check the upload itself. |
+| **A metadata endpoint.** A separate call, such as `GET /files/{id}`, returns the checksum. | capture it in that step, then `sha256: "{{ .vars.meta_sha }}"` | Metadata and content drifting apart. |
+| **The download response itself.** A header sent with the file. | `sha256_header: Content-Digest` | Corruption in transit. It is weaker on its own: a server that stores bad bytes and hashes them will agree with itself. |
+
+`sha256_header` understands the common formats (values below are the digest of `hello world`):
+
+| Header | Example value |
+|---|---|
+| `Content-Digest` / `Repr-Digest` ([RFC 9530](https://www.rfc-editor.org/rfc/rfc9530)) | `sha-256=:uU0nuZNNPgilLlLX2n2r+sSE7+N6U4DukIj3rOLvzek=:` (other algorithms in the list are ignored) |
+| `Digest` ([RFC 3230](https://www.rfc-editor.org/rfc/rfc3230), legacy) | `SHA-256=uU0nuZNNPgilLlLX2n2r+sSE7+N6U4DukIj3rOLvzek=` |
+| `x-amz-checksum-sha256` (S3) and other base64 headers | `uU0nuZNNPgilLlLX2n2r+sSE7+N6U4DukIj3rOLvzek=` |
+| `X-Checksum-Sha256` and other hex headers | `b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9` |
+
+Points to keep in mind:
+
+- **For zip payloads, the hash is of the whole archive** as sent. That is what a server stores and returns, so it matches a plain file download.
+- **Compression.** A server that compresses the response on the fly (`Content-Encoding`) changes the bytes: Go decompresses `gzip` transparently, so herakles hashes the decoded content, as `Repr-Digest` describes. A `Content-Digest` of the compressed bytes would not match then. Payloads are incompressible, so servers rarely compress them.
+- **Size alone** (`assert.size`) is cheap but only detects truncation.
+
+The example journey uses both `sha256` against the upload and
+`sha256_header: Content-Digest`, which the eurystheus mock sends.
 
 ## Command line
 
@@ -360,7 +392,7 @@ It applies the timeout through `ctx`, measures the duration, and turns the
 
 Optional interfaces:
 
-- `Validator` adds static checks to `herakles validate`.
+- `Validator` adds static checks to `herakles validate`, which also runs before `run`. It is not called again per request, so keep runtime checks in `Run` to what a template can break.
 - `Outputs` names the variables a step sets. Validation uses it to check references, and the runner uses it to skip the steps that need the outputs of a skipped step.
 - `BulkTransfer` puts a step under `transfer_timeout`.
 
@@ -389,7 +421,7 @@ schema/               JSON Schema of the config
 
 - **The engine emits events, observers report them.** Metrics and logs are two implementations of `engine.Observer`, so neither knows about the other, and tests record events directly.
 - **The config tree is rendered, then decoded.** Templates are expanded on the YAML nodes and the result is decoded into the module's own struct. Modules get native Go types and stay template-free.
-- **Built for a long-running process.** Templates are parsed once and cached. Everything else that could carry state, such as variables, the HTTP client, connections and cookies, is rebuilt every cycle, so no cycle can depend on the previous one.
+- **Built for a long-running process.** Templates and JSONPath expressions are parsed once and cached, and per-step metadata is computed when the engine starts. Everything else that could carry state, such as variables, the HTTP client, connections and cookies, is rebuilt every cycle, so no cycle can depend on the previous one.
 - **Failures stay contained.** A panicking module fails its step, not the process. Every step is bounded by a timeout. Cleanup and finalizers survive shutdown.
 
 ## Known limits
