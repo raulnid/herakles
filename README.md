@@ -359,8 +359,9 @@ ServiceMonitor and alerts, plus a demo in kind or k3d. Points worth keeping:
 - **Locked down.** The pod runs as non-root, on a read-only root filesystem, without capabilities.
 - **Small.** RSS stays around 20 MB even while moving 5 MiB payloads. `GOMEMLIMIT` is derived from the container limit. The image is a static binary on distroless: 18 MB on disk, under 6 MB to pull.
 
-Images are published to GHCR for `linux/amd64` and `linux/arm64`:
-`ghcr.io/raulnid/herakles` and the demo API `ghcr.io/raulnid/herakles-eurystheus`.
+The image is published to GHCR for `linux/amd64` and `linux/arm64` as
+`ghcr.io/raulnid/herakles`. The eurystheus demo API is not published: it is
+only for demos and tests, and the Kubernetes demo builds it locally.
 
 ## Writing a module
 

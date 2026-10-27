@@ -16,5 +16,3 @@ configMapGenerator:
 images:
   - name: ghcr.io/raulnid/herakles
     newTag: 0.1.0
-  - name: ghcr.io/raulnid/herakles-eurystheus
-    newTag: 0.1.0

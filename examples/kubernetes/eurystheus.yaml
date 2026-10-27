@@ -18,7 +18,8 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: eurystheus
-          image: ghcr.io/raulnid/herakles-eurystheus
+          # Not published: build it locally and load it into the cluster (see README).
+          image: herakles-eurystheus:dev
           ports:
             - {name: http, containerPort: 8080}
           env:
