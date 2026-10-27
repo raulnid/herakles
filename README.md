@@ -357,7 +357,7 @@ ServiceMonitor and alerts, plus a demo in kind or k3d. Points worth keeping:
 - **One replica, by design.** Two instances would run the same mutating steps at once and step on each other. The Deployment uses `replicas: 1` and the `Recreate` strategy, so rollouts never overlap either.
 - **Secrets as files.** Mount the Secret and reference it with `{file: ...}`. herakles needs no Kubernetes API access, so the pod gets no service account token.
 - **Locked down.** The pod runs as non-root, on a read-only root filesystem, without capabilities.
-- **Small.** RSS stays around 20 MB even while moving 5 MiB payloads. `GOMEMLIMIT` is derived from the container limit. The image is a static binary on distroless, about 15 MB.
+- **Small.** RSS stays around 20 MB even while moving 5 MiB payloads. `GOMEMLIMIT` is derived from the container limit. The image is a static binary on distroless: 18 MB on disk, under 6 MB to pull.
 
 Images are published to GHCR for `linux/amd64` and `linux/arm64`:
 `ghcr.io/raulnid/herakles` and the demo API `ghcr.io/raulnid/herakles-eurystheus`.
