@@ -21,6 +21,8 @@ import (
 	"sync"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/raulnid/herakles/internal/module"
 )
 
 // Kind writes about size bytes of incompressible content to w, reading
@@ -133,7 +135,7 @@ type Size int64
 var sizeRe = regexp.MustCompile(`^(\d+)\s*([KMG]i?B|B)?$`)
 
 func (s *Size) UnmarshalYAML(n *yaml.Node) error {
-	if strings.Contains(n.Value, "{{") {
+	if module.Templated(n.Value) {
 		return nil // unrendered, during validation: the rendered value is checked at run time
 	}
 	m := sizeRe.FindStringSubmatch(strings.TrimSpace(n.Value))

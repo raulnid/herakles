@@ -2,12 +2,15 @@ package httpstep
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"mime/multipart"
 	"net/textproto"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -79,7 +82,7 @@ func (b *Body) payloads() []*payload.Spec {
 	if b.Payload != nil {
 		out = append(out, b.Payload)
 	}
-	for _, name := range sortedKeys(b.Multipart) {
+	for _, name := range slices.Sorted(maps.Keys(b.Multipart)) {
 		if p := b.Multipart[name].Payload; p != nil {
 			out = append(out, p)
 		}
@@ -193,11 +196,11 @@ func (b *Body) build() (*reqBody, error) {
 
 // writeParts streams the parts in name order, so requests are reproducible.
 func (b *Body) writeParts(mw *multipart.Writer, streams map[*payload.Spec]*payload.Stream) error {
-	for _, name := range sortedKeys(b.Multipart) {
+	for _, name := range slices.Sorted(maps.Keys(b.Multipart)) {
 		p := b.Multipart[name]
 		filename, ctype := p.Filename, p.ContentType
 		if p.Payload != nil {
-			filename, ctype = orDefault(filename, p.Payload.Filename()), orDefault(ctype, p.Payload.ContentType())
+			filename, ctype = cmp.Or(filename, p.Payload.Filename()), cmp.Or(ctype, p.Payload.ContentType())
 		}
 		if strings.ContainsAny(ctype, "\r\n") {
 			return fmt.Errorf("multipart %q: content type contains a line break", name)
@@ -209,7 +212,7 @@ func (b *Body) writeParts(mw *multipart.Writer, streams map[*payload.Spec]*paylo
 		} else {
 			h := textproto.MIMEHeader{}
 			h.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q; filename=%q`, name, filename))
-			h.Set("Content-Type", orDefault(ctype, "application/octet-stream"))
+			h.Set("Content-Type", cmp.Or(ctype, "application/octet-stream"))
 			w, err = mw.CreatePart(h)
 		}
 		if err != nil {

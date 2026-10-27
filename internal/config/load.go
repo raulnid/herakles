@@ -10,8 +10,8 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// varName keeps names usable as {{ .vars.name }} in templates.
-var varName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+// VarName is the form of variable names, so they work as {{ .vars.name }}.
+var VarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // Load reads, decodes and structurally validates a config file.
 func Load(path string) (*Config, error) {
@@ -67,8 +67,8 @@ func (c *Config) validate() error {
 	}
 	checkVars := func(where string, vs map[string]Var) {
 		for name, v := range vs {
-			if !varName.MatchString(name) {
-				add("%s: var %q: name must match %s", where, name, varName)
+			if !VarName.MatchString(name) {
+				add("%s: var %q: name must match %s", where, name, VarName)
 			}
 			n := 0
 			for _, set := range []bool{v.Value != nil, v.File != "", v.Env != ""} {

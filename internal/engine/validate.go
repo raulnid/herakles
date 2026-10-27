@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -12,8 +11,6 @@ import (
 	"github.com/raulnid/herakles/internal/module"
 	"github.com/raulnid/herakles/internal/tmpl"
 )
-
-var identRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // Validate checks what config.Parse cannot: module names and configs,
 // template syntax, and that every variable a step reads is declared or set by
@@ -121,8 +118,8 @@ func checkStep(s config.Step) ([]string, error) {
 		outs = o.Outputs(cfg)
 		slices.Sort(outs)
 		for _, name := range outs {
-			if !identRe.MatchString(name) {
-				errs = append(errs, fmt.Errorf("output %q: name must match %s", name, identRe))
+			if !config.VarName.MatchString(name) {
+				errs = append(errs, fmt.Errorf("output %q: name must match %s", name, config.VarName))
 			}
 		}
 	}

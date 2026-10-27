@@ -1,6 +1,7 @@
 package logfmt
 
 import (
+	"cmp"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -36,7 +37,7 @@ func (o Observer) step(r engine.StepReport) *slog.Logger {
 }
 
 func (o Observer) StepStart(r engine.StepReport) {
-	msg := MarkStart + " " + cmp(r.Description, "start")
+	msg := MarkStart + " " + cmp.Or(r.Description, "start")
 	if len(r.Needs) > 0 {
 		msg += "  needs: " + strings.Join(r.Needs, ", ")
 	}
@@ -109,11 +110,4 @@ func Rate(bps float64) string {
 		bps /= 1000
 	}
 	return fmt.Sprintf("%.1f GB/s", bps)
-}
-
-func cmp(s, def string) string {
-	if s == "" {
-		return def
-	}
-	return s
 }

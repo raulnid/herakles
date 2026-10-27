@@ -3,6 +3,7 @@
 package httpstep
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -132,7 +133,7 @@ func (Module) Run(ctx context.Context, cfg any, env *module.Env) module.Result {
 		reqBody = body
 	}
 	tr := &tracer{}
-	method := orDefault(strings.ToUpper(c.Method), http.MethodGet)
+	method := cmp.Or(strings.ToUpper(c.Method), http.MethodGet)
 	req, err := http.NewRequestWithContext(httptrace.WithClientTrace(ctx, tr.clientTrace()), method, c.URL, reqBody)
 	if err != nil {
 		_ = body.Close()
@@ -226,7 +227,7 @@ func (c *Config) check(resp *http.Response, rb *respBody) (map[string]vars.Value
 			return nil, fmt.Errorf("%w%s", err, rb.excerpt())
 		}
 	}
-	for _, path := range sortedKeys(c.Assert.JSONPath) {
+	for _, path := range slices.Sorted(maps.Keys(c.Assert.JSONPath)) {
 		got, err := first(doc, path)
 		if err != nil {
 			return nil, fmt.Errorf("assert %w%s", err, rb.excerpt())
@@ -237,7 +238,7 @@ func (c *Config) check(resp *http.Response, rb *respBody) (map[string]vars.Value
 	}
 
 	captured := map[string]vars.Value{}
-	for _, name := range sortedKeys(c.Capture) {
+	for _, name := range slices.Sorted(maps.Keys(c.Capture)) {
 		cp := c.Capture[name]
 		var raw any
 		switch {
@@ -257,22 +258,6 @@ func (c *Config) check(resp *http.Response, rb *respBody) (map[string]vars.Value
 		captured[name] = vars.Value{Raw: raw, Secret: cp.Secret}
 	}
 	return captured, nil
-}
-
-func orDefault(s, def string) string {
-	if s == "" {
-		return def
-	}
-	return s
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-	return keys
 }
 
 // withSafeRedirects shares the cycle's transport and cookies but, on a
