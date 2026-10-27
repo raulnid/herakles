@@ -23,14 +23,14 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 
 FROM gcr.io/distroless/static-debian12:nonroot AS eurystheus
 COPY --from=build-eurystheus /out/eurystheus /eurystheus
-USER nonroot:nonroot
+USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/eurystheus"]
 
 # Last stage: the default target.
 FROM gcr.io/distroless/static-debian12:nonroot AS herakles
 COPY --from=build-herakles /out/herakles /herakles
-USER nonroot:nonroot
+USER 65532:65532
 EXPOSE 9090
 ENTRYPOINT ["/herakles"]
 CMD ["run", "-config", "/etc/herakles/config/herakles.yaml"]

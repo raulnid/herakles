@@ -43,10 +43,11 @@ jobs:
           docker buildx build --load --target herakles -t herakles:ci .
           docker buildx build --load --target eurystheus -t eurystheus:ci .
       - name: Image size
+        # Compressed size is what nodes pull; it does not depend on the local image store.
         run: |
-          size=$(docker image inspect -f '{{ .Size }}' herakles:ci)
-          echo "herakles image: $((size / 1024 / 1024)) MiB"
-          test "$size" -lt $((20 * 1024 * 1024))
+          size=$(docker save herakles:ci | gzip -1 | wc -c)
+          echo "herakles image: $((size / 1024)) KiB compressed"
+          test "$size" -lt $((10 * 1024 * 1024))
       - name: Run the example journey once
         run: |
           docker network create ci
