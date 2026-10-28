@@ -255,6 +255,9 @@ The example journey uses both `sha256` against the upload and
 
 ## Command line
 
+Every [release](https://github.com/raulnid/herakles/releases) ships static
+binaries for Linux, macOS and Windows, with a `checksums.txt`.
+
 ```
 herakles run      -config FILE [-once [-report FILE]] [-target NAME] [-log-level LEVEL]
 herakles validate -config FILE
