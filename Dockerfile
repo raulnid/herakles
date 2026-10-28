@@ -14,8 +14,9 @@ ARG TARGETOS TARGETARCH
 ENV CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH
 
 FROM base AS build-herakles
+ARG VERSION=dev
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    go build -trimpath -ldflags "-s -w" -o /out/herakles ./cmd/herakles
+    go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/herakles ./cmd/herakles
 
 FROM base AS build-eurystheus
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \

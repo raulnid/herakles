@@ -99,7 +99,7 @@ variable a step reads is declared or set by an earlier step, for every target.
 | `step_timeout` | `10s` | Time limit for each step. |
 | `transfer_timeout` | `120s` | Time limit for steps that upload a payload or verify a download (`assert.sha256` or `assert.size`). |
 | `listen` | `:9090` | Address of `/metrics` and `/health`. |
-| `user_agent` | `herakles/0.1 (synthetic probe)` | Sent on every request, so the traffic can be filtered out of your stats. |
+| `user_agent` | `herakles/<version> (synthetic probe)` | Sent on every request, so the traffic can be filtered out of your stats. |
 
 ### Variables
 
@@ -258,6 +258,7 @@ The example journey uses both `sha256` against the upload and
 ```
 herakles run      -config FILE [-once] [-target NAME] [-log-level LEVEL]
 herakles validate -config FILE
+herakles version
 ```
 
 | Flag | |
@@ -288,6 +289,7 @@ All metrics are prefixed `herakles_` and labeled `target`, plus `labor`,
 | `labor_failed_step` | gauge | target, labor, step | 1 on the required step that failed the last run, 0 on the others. |
 | `http_phase_seconds` | gauge | target, labor, step, phase | Phases of the last HTTP request: `dns`, `connect`, `tls`, `wait` (request sent to first byte), `transfer`, `total`. On a reused connection `dns`, `connect` and `tls` are 0. |
 | `transfer_bytes_per_second` | gauge | target, labor, step, direction | Rate of the last `upload` or `download`. |
+| `build_info` | gauge | version, goversion | Always 1. Shows which herakles version runs where: `herakles_build_info{version!="0.2.0"}`. |
 | `cycle_success` | gauge | target | 1 if every required step of the last cycle passed. It is 0 when variables cannot be resolved, for example an unreadable secret file. |
 
 A skipped labor does not update its series. Its last success timestamp ages,

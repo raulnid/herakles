@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -27,7 +28,11 @@ import (
 
 const usage = `usage:
   herakles run      -config FILE [-once] [-target NAME] [-log-level LEVEL]
-  herakles validate -config FILE`
+  herakles validate -config FILE
+  herakles version`
+
+// version is set at build time: -ldflags "-X main.version=0.2.0".
+var version = "dev"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stderr))
@@ -38,6 +43,11 @@ func run(args []string, stderr io.Writer) int {
 		fmt.Fprintln(stderr, usage)
 		return 2
 	}
+	if args[0] == "version" {
+		fmt.Fprintf(stderr, "herakles %s %s\n", version, runtime.Version())
+		return 0
+	}
+	config.DefaultUserAgent = "herakles/" + version + " (synthetic probe)"
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	cfgPath := fs.String("config", "herakles.yaml", "path to the config file")
@@ -79,7 +89,12 @@ func run(args []string, stderr io.Writer) int {
 	log := slog.New(logfmt.NewHandler(stderr, level))
 	slog.SetDefault(log)
 	reg := prometheus.NewRegistry()
-	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	buildInfo := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "herakles_build_info", Help: "Always 1; labels carry the herakles and Go versions.",
+		ConstLabels: prometheus.Labels{"version": version, "goversion": runtime.Version()},
+	})
+	buildInfo.Set(1)
+	reg.MustRegister(buildInfo, collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	e := engine.New(cfg, engine.Observers{logfmt.NewObserver(log), metrics.New(reg)})
 
 	if *once {

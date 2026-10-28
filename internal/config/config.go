@@ -13,8 +13,10 @@ const (
 	DefaultStepTimeout     = 10 * time.Second
 	DefaultTransferTimeout = 120 * time.Second
 	DefaultListen          = ":9090"
-	DefaultUserAgent       = "herakles/0.1 (synthetic probe)"
 )
+
+// DefaultUserAgent identifies the traffic as synthetic; main sets the version.
+var DefaultUserAgent = "herakles/dev (synthetic probe)"
 
 type Config struct {
 	Interval        time.Duration  `yaml:"interval"`
