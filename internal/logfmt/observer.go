@@ -59,9 +59,9 @@ func (o Observer) StepEnd(r engine.StepReport) {
 		}
 		l.Info(msg)
 	case r.Optional:
-		l.Warn(fmt.Sprintf("%s failed after %s (optional, labor goes on): %s", MarkOptional, Dur(r.Duration), r.Reason))
+		l.Warn(fmt.Sprintf("%s failed after %s (optional, labor goes on): %s%s", MarkOptional, Dur(r.Duration), r.Reason, trace(r)))
 	default:
-		l.Error(fmt.Sprintf("%s FAILED after %s: %s", MarkFailed, Dur(r.Duration), r.Reason))
+		l.Error(fmt.Sprintf("%s FAILED after %s: %s%s", MarkFailed, Dur(r.Duration), r.Reason, trace(r)))
 	}
 }
 
@@ -87,6 +87,14 @@ func (o Observer) CycleEnd(r engine.CycleReport) {
 	default:
 		l.Error(fmt.Sprintf("%s FAILED in %s", MarkEnd, Dur(r.Duration)))
 	}
+}
+
+// trace points a failure to the backend's trace of the same request.
+func trace(r engine.StepReport) string {
+	if r.TraceID == "" {
+		return ""
+	}
+	return "  trace=" + r.TraceID
 }
 
 // Dur formats durations for humans: <1ms, 120ms, 1.24s.

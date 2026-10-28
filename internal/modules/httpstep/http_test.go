@@ -482,3 +482,24 @@ func TestHeaderAndPartInjectionRejected(t *testing.T) {
 		t.Errorf("CRLF in a part content type: err = %v", err)
 	}
 }
+
+func TestTraceParentHeader(t *testing.T) {
+	got := make(chan string, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { got <- r.Header.Get("Traceparent") }))
+	defer srv.Close()
+	const tp = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+	env := &module.Env{Vars: vars.New(), HTTPClient: &http.Client{}, TraceParent: tp}
+	if res := (Module{}).Run(context.Background(), config(t, "url: "+srv.URL), env); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	if h := <-got; h != tp {
+		t.Errorf("traceparent = %q", h)
+	}
+	own := "00-11111111111111111111111111111111-2222222222222222-00"
+	if res := (Module{}).Run(context.Background(), config(t, "url: "+srv.URL+"\nheaders: {traceparent: "+own+"}"), env); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	if h := <-got; h != own {
+		t.Errorf("a traceparent set in headers must win, got %q", h)
+	}
+}

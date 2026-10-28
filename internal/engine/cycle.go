@@ -2,8 +2,10 @@ package engine
 
 import (
 	"context"
+	crand "crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -29,6 +31,7 @@ type run struct {
 	// unavailable holds outputs of skipped steps: steps that need them are
 	// skipped too instead of failing.
 	unavailable map[string]bool
+	traceID     string // of the labor running now; labors of a target run in sequence
 }
 
 // cycle runs every labor of one target once and reports whether all required
@@ -83,6 +86,7 @@ func (e *Engine) cycle(ctx context.Context, t config.Target) bool {
 
 func (r *run) labor(ctx context.Context, l *config.Labor) Status {
 	start := time.Now()
+	r.traceID = randomHex(16)
 	rep := LaborReport{Target: r.target.Name, Labor: l.Name, Steps: r.e.names[l]}
 	for i := range l.Steps {
 		s := &l.Steps[i]
@@ -113,7 +117,7 @@ func (r *run) labor(ctx context.Context, l *config.Labor) Status {
 func (r *run) step(ctx context.Context, l *config.Labor, s *config.Step, n, total int, lenient bool) StepReport {
 	rep := StepReport{
 		Target: r.target.Name, Labor: l.Name, Step: s.Name, Description: s.Description,
-		N: n, Total: total, Finally: n == 0, Optional: s.Optional, Needs: r.e.needs[s],
+		N: n, Total: total, Finally: n == 0, Optional: s.Optional, Needs: r.e.needs[s], TraceID: r.traceID,
 	}
 	end := func(st Status, reason string) StepReport {
 		rep.Status, rep.Reason = st, reason
@@ -158,7 +162,11 @@ func (r *run) step(ctx context.Context, l *config.Labor, s *config.Step, n, tota
 
 	r.e.obs.StepStart(rep)
 	t0 := time.Now()
-	res := safeRun(sctx, m, cfg, &module.Env{Target: r.target.Name, Vars: r.vars, HTTPClient: r.client, UserAgent: r.e.cfg.UserAgent})
+	env := &module.Env{
+		Target: r.target.Name, Vars: r.vars, HTTPClient: r.client, UserAgent: r.e.cfg.UserAgent,
+		TraceParent: "00-" + r.traceID + "-" + randomHex(8) + "-01", // sampled: probe traffic is worth keeping
+	}
+	res := safeRun(sctx, m, cfg, env)
 	rep.Duration, rep.Phases, rep.Transfers = time.Since(t0), res.Phases, res.Transfers
 
 	switch {
@@ -192,6 +200,12 @@ func (r *run) markUnavailable(m module.Module, s *config.Step) {
 	for _, name := range o.Outputs(cfg) {
 		r.unavailable[name] = true
 	}
+}
+
+func randomHex(n int) string {
+	b := make([]byte, n)
+	_, _ = crand.Read(b) // never fails
+	return hex.EncodeToString(b)
 }
 
 // safeRun keeps a panicking module from taking down every target.

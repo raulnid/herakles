@@ -45,10 +45,13 @@ type (
 // Env is what the core hands to a step. Vars is read-only for modules: new
 // values go back through Result.Captured.
 type Env struct {
-	Target     string
-	Vars       *vars.Vars
-	HTTPClient *http.Client
-	UserAgent  string
+	Target string
+	// TraceParent is a W3C traceparent value for this step: one trace per
+	// labor run, one span id per step. Modules that speak HTTP send it.
+	TraceParent string
+	Vars        *vars.Vars
+	HTTPClient  *http.Client
+	UserAgent   string
 }
 
 type Result struct {

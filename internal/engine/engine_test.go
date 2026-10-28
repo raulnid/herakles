@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"cmp"
 	"context"
 	"encoding/pem"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -31,6 +33,7 @@ type fakeCfg struct {
 	Secret   bool              `yaml:"secret"`
 	Transfer bool              `yaml:"transfer"`
 	Panic    bool              `yaml:"panic"`
+	Trace    bool              `yaml:"trace"` // record env.TraceParent instead of Echo
 }
 
 var (
@@ -57,9 +60,9 @@ func (fake) Run(ctx context.Context, cfg any, env *module.Env) module.Result {
 	if c.Panic {
 		panic("boom")
 	}
-	if c.Echo != "" {
+	if c.Echo != "" || c.Trace {
 		ranMu.Lock()
-		ran = append(ran, c.Echo)
+		ran = append(ran, cmp.Or(c.Echo, env.TraceParent))
 		ranMu.Unlock()
 	}
 	select {
@@ -438,5 +441,36 @@ labors:
 	}
 	if got := ranSteps(); !slices.Equal(got, []string{"after"}) {
 		t.Errorf("ran %v", got)
+	}
+}
+
+func TestTraceParentPerLaborAndStep(t *testing.T) {
+	e, rec := setup(t, `
+targets: [{name: dev}]
+labors:
+  - name: a
+    steps: [{name: s1, fake: {trace: true}}, {name: s2, fake: {trace: true}}]
+  - name: b
+    steps: [{name: s3, fake: {trace: true}}]
+`)
+	e.Once(context.Background())
+	tp := ranSteps()
+	re := regexp.MustCompile(`^00-([0-9a-f]{32})-([0-9a-f]{16})-01$`)
+	var traces, spans []string
+	for _, h := range tp {
+		m := re.FindStringSubmatch(h)
+		if m == nil {
+			t.Fatalf("bad traceparent %q", h)
+		}
+		traces, spans = append(traces, m[1]), append(spans, m[2])
+	}
+	if len(tp) != 3 || traces[0] != traces[1] || traces[1] == traces[2] {
+		t.Errorf("want one trace per labor run: %v", traces)
+	}
+	if spans[0] == spans[1] {
+		t.Errorf("want one span id per step: %v", spans)
+	}
+	if s := rec.step("dev", "a", "s2"); s.TraceID != traces[0] {
+		t.Errorf("report trace id %q, want %q", s.TraceID, traces[0])
 	}
 }

@@ -138,3 +138,11 @@ func TestOneLinePerEvent(t *testing.T) {
 		t.Errorf("one event wrote %d lines: %q", n, buf.String())
 	}
 }
+
+func TestFailureLogsTraceID(t *testing.T) {
+	var buf bytes.Buffer
+	newObserver(&buf).StepEnd(engine.StepReport{Target: "dev", Labor: "l", Step: "s", N: 1, Total: 1, Status: engine.Failed, Reason: "status 500", TraceID: "0af7651916cd43dd8448eb211c80319c"})
+	if !strings.HasSuffix(strings.TrimSpace(buf.String()), "!! FAILED after <1ms: status 500  trace=0af7651916cd43dd8448eb211c80319c") {
+		t.Errorf("got %q", buf.String())
+	}
+}

@@ -141,6 +141,9 @@ func (Module) Run(ctx context.Context, cfg any, env *module.Env) module.Result {
 	}
 	req.ContentLength = body.length
 	req.Header.Set("User-Agent", env.UserAgent)
+	if env.TraceParent != "" {
+		req.Header.Set("Traceparent", env.TraceParent) // a traceparent in headers overrides it below
+	}
 	if body.ctype != "" {
 		req.Header.Set("Content-Type", body.ctype)
 	}

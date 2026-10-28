@@ -350,6 +350,27 @@ everything that comes back from the probed services as untrusted.
 - **Bounded work.** Every step has a timeout. Response bodies are streamed, and only 1 MiB (for JSONPath) or 200 bytes (for error messages) is kept. A panicking module fails its step, not the process.
 - **The container**, as shipped in the example manifests: static binary on distroless, non-root, read-only root filesystem, no capabilities, no service account token.
 
+## Tracing
+
+Every request carries a [W3C `traceparent`](https://www.w3.org/TR/trace-context/)
+header, so services instrumented with OpenTelemetry put herakles traffic in
+their traces:
+
+- **One trace per labor run.** Every step of the journey shares the trace id, so Tempo or Jaeger shows the whole journey together.
+- **One span id per step.** The backend's spans hang from the step that called them.
+- **Sampled** (`-01`). Probe requests are few and worth keeping, even where the backend samples its own traffic.
+
+Failure lines in the log carry the trace id. Copy it into your tracing UI to
+see which service failed and why:
+
+```
+!! FAILED after 1.02s: status 502, want 2xx; body: upstream timeout  trace=0af7651916cd43dd8448eb211c80319c
+```
+
+herakles does not export spans of its own. The backend shows the step's
+requests with a parent span it never received, which Tempo and Jaeger display
+normally. To send your own header instead, set `traceparent` in `headers`.
+
 ## Running in Kubernetes
 
 [`examples/kubernetes`](examples/kubernetes) has a kustomization with a
