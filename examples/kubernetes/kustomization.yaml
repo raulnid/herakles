@@ -15,4 +15,4 @@ configMapGenerator:
       - herakles.yaml
 images:
   - name: ghcr.io/raulnid/herakles
-    newTag: 0.1.0
+    newTag: 0.2.0
