@@ -256,7 +256,7 @@ The example journey uses both `sha256` against the upload and
 ## Command line
 
 ```
-herakles run      -config FILE [-once] [-target NAME] [-log-level LEVEL]
+herakles run      -config FILE [-once [-report FILE]] [-target NAME] [-log-level LEVEL]
 herakles validate -config FILE
 herakles version
 ```
@@ -264,8 +264,35 @@ herakles version
 | Flag | |
 |---|---|
 | `-once` | Run one cycle of every target and exit: 0 if every required step passed, 1 otherwise. Does not start the metrics server. |
+| `-report FILE` | With `-once`: write a JUnit XML report, one test case per step. See [In CI pipelines](#in-ci-pipelines). |
 | `-target NAME` | Probe only this target. Handy for testing locally without touching production. |
 | `-log-level` | `debug`, `info` (default), `warn` (only failures) or `error`. |
+
+### In CI pipelines
+
+The same journeys that run in the cluster make a post-deploy smoke test. Run
+one cycle against the environment you just deployed and publish the report:
+
+```groovy
+// Jenkinsfile
+stage('Smoke test') {
+  steps {
+    sh 'herakles run -once -target staging -config herakles.yaml -report herakles.xml'
+  }
+  post { always { junit 'herakles.xml' } }
+}
+```
+
+Each target and labor becomes a test suite, and each step becomes a test case:
+
+| Step result | In the report | In Jenkins |
+|---|---|---|
+| ok | passed | green |
+| required step failed | `<failure type="required">` | red, and `-once` exits 1 |
+| optional step failed | `<failure type="optional">` | unstable, a warning |
+| skipped, or its labor was skipped | `<skipped>` with the reason | grey |
+
+Failure messages are the redacted reasons from the log, plus the trace id.
 
 On SIGTERM, herakles cancels the running step. Then it runs the pending
 `finally` blocks and finalizers, so that nothing is left behind and the session
@@ -459,6 +486,7 @@ internal/module       the module contract and registry
 internal/modules/     http (httpstep) and payload
 internal/metrics      Prometheus observer
 internal/logfmt       log observer and fixed-width handler
+internal/junit        JUnit report observer for -once
 examples/             journey, eurystheus mock API, Kubernetes manifests
 schema/               JSON Schema of the config
 ```

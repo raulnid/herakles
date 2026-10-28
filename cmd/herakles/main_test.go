@@ -13,6 +13,7 @@ func TestExitCodes(t *testing.T) {
 		{nil, 2},
 		{[]string{"bogus"}, 2},
 		{[]string{"version"}, 0},
+		{[]string{"run", "-config", "../../internal/config/testdata/valid.yaml", "-report", "r.xml"}, 2},
 		{[]string{"validate", "-config", "../../internal/config/testdata/valid.yaml"}, 0},
 		{[]string{"validate", "-config", "../../internal/config/testdata/invalid.yaml"}, 1},
 		{[]string{"validate", "-config", "missing.yaml"}, 1},

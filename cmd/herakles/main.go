@@ -21,13 +21,14 @@ import (
 
 	"github.com/raulnid/herakles/internal/config"
 	"github.com/raulnid/herakles/internal/engine"
+	"github.com/raulnid/herakles/internal/junit"
 	"github.com/raulnid/herakles/internal/logfmt"
 	"github.com/raulnid/herakles/internal/metrics"
 	_ "github.com/raulnid/herakles/internal/modules/httpstep"
 )
 
 const usage = `usage:
-  herakles run      -config FILE [-once] [-target NAME] [-log-level LEVEL]
+  herakles run      -config FILE [-once [-report FILE]] [-target NAME] [-log-level LEVEL]
   herakles validate -config FILE
   herakles version`
 
@@ -53,11 +54,12 @@ func run(args []string, stderr io.Writer) int {
 	cfgPath := fs.String("config", "herakles.yaml", "path to the config file")
 	var once *bool
 	var level slog.Level
-	var target *string
+	var target, report *string
 	switch args[0] {
 	case "run":
 		once = fs.Bool("once", false, "run a single cycle and exit 1 if any required step failed")
 		target = fs.String("target", "", "run only this target")
+		report = fs.String("report", "", "with -once: write a JUnit XML report of every step to this file")
 		fs.TextVar(&level, "log-level", slog.LevelInfo, "debug, info, warn or error; warn logs only failures")
 	case "validate":
 	default:
@@ -65,6 +67,10 @@ func run(args []string, stderr io.Writer) int {
 		return 2
 	}
 	if err := fs.Parse(args[1:]); err != nil {
+		return 2
+	}
+	if report != nil && *report != "" && !*once {
+		fmt.Fprintln(stderr, "-report needs -once")
 		return 2
 	}
 
@@ -95,10 +101,22 @@ func run(args []string, stderr io.Writer) int {
 	})
 	buildInfo.Set(1)
 	reg.MustRegister(buildInfo, collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
-	e := engine.New(cfg, engine.Observers{logfmt.NewObserver(log), metrics.New(reg)})
+	obs := engine.Observers{logfmt.NewObserver(log), metrics.New(reg)}
+	rep := &junit.Report{}
+	if *report != "" {
+		obs = append(obs, rep)
+	}
+	e := engine.New(cfg, obs)
 
 	if *once {
-		if !e.Once(ctx) {
+		ok := e.Once(ctx)
+		if *report != "" {
+			if err := writeReport(*report, rep); err != nil {
+				slog.Error("cannot write the report", "err", err)
+				return 1
+			}
+		}
+		if !ok {
 			return 1
 		}
 		return 0
@@ -137,4 +155,16 @@ func serve(ctx context.Context, stop func(), cfg *config.Config, reg *prometheus
 		slog.Info("herakles stopped")
 		return 0
 	}
+}
+
+func writeReport(path string, rep *junit.Report) error {
+	f, err := os.Create(path) //nolint:gosec // the operator's own -report flag
+	if err != nil {
+		return err
+	}
+	if err := rep.Write(f); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
