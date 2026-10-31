@@ -263,6 +263,26 @@ Points to keep in mind:
 The example journey uses both `sha256` against the upload and
 `sha256_header: Content-Digest`, which the eurystheus mock sends.
 
+### The `tcp` module
+
+Checks that a port accepts connections, and with `tls: true` that the TLS
+handshake succeeds. Use it for services that do not speak HTTP: databases,
+brokers, SMTP, LDAPS.
+
+```yaml
+- name: postgres-tls
+  tcp:
+    addr: "db.internal:5432"   # host:port, templated like any field
+    tls: true                  # CA, client cert and insecure_skip_verify come from the target's tls
+    server_name: db.internal   # SNI and the name verified; default: the host of addr
+```
+
+It reports the `dns`, `connect`, `tls` and `total` phases in
+`herakles_http_phase_seconds`, and with `tls: true` the certificate expiry in
+`herakles_tls_cert_expiry_timestamp_seconds`, so expiry alerts also cover
+non-HTTP services. It sends no data: a TLS service that needs STARTTLS (SMTP
+on 587, PostgreSQL) is checked at the TCP level only.
+
 ## Command line
 
 Every [release](https://github.com/raulnid/herakles/releases) ships static
@@ -327,7 +347,7 @@ All metrics are prefixed `herakles_` and labeled `target`, plus `labor`,
 | `labor_duration_seconds` | histogram | target, labor | Duration of every labor run, finally included. |
 | `labor_last_duration_seconds` | gauge | target, labor | Exact duration of the last run. |
 | `labor_failed_step` | gauge | target, labor, step | 1 on the required step that failed the last run, 0 on the others. |
-| `http_phase_seconds` | gauge | target, labor, step, phase | Phases of the last HTTP request: `dns`, `connect`, `tls`, `wait` (request sent to first byte), `transfer`, `total`. On a reused connection `dns`, `connect` and `tls` are 0. |
+| `http_phase_seconds` | gauge | target, labor, step, phase | Phases of the last HTTP request: `dns`, `connect`, `tls`, `wait` (request sent to first byte), `transfer`, `total`. On a reused connection `dns`, `connect` and `tls` are 0. The `tcp` module reports `dns`, `connect`, `tls` and `total` here too; the name predates it. |
 | `transfer_bytes_per_second` | gauge | target, labor, step, direction | Rate of the last `upload` or `download`. |
 | `tls_cert_expiry_timestamp_seconds` | gauge | target, labor, step | Earliest `NotAfter` in the server certificate chain, set by steps that got a TLS response, reused connections included. Days left: `(herakles_tls_cert_expiry_timestamp_seconds - time()) / 86400`. |
 | `labor_runs_total` | counter | target, labor, result | Labor runs by `result`: `ok`, `failed` or `skipped`. The SLO metric. |
@@ -485,38 +505,18 @@ only for demos and tests, and the Kubernetes demo builds it locally.
 ## Writing a module
 
 A module is Go code compiled into the binary. It needs no change to the core:
-implement the interface, register it, import the package in `cmd/herakles`.
+implement the interface, register it from `init`, import the package in
+`cmd/herakles`. The smallest real module,
+[`internal/modules/tcpstep`](internal/modules/tcpstep/tcp.go), is the
+reference: about 100 lines with validation, phases and TLS.
 
 ```go
-package tcpcheck
-
-import (
-	"context"
-	"net"
-
-	"github.com/raulnid/herakles/internal/module"
-)
-
-type Config struct {
-	Addr string `yaml:"addr"`
+type Module interface {
+	NewConfig() any                                   // pointer to a config struct with yaml tags
+	Run(ctx context.Context, cfg any, env *Env) Result
 }
-
-type Module struct{}
 
 func init() { module.Register("tcp", Module{}) }
-
-func (Module) NewConfig() any { return &Config{} }
-
-func (Module) Run(ctx context.Context, cfg any, env *module.Env) module.Result {
-	c := cfg.(*Config)
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "tcp", c.Addr)
-	if err != nil {
-		return module.Result{Err: err}
-	}
-	conn.Close()
-	return module.Result{}
-}
 ```
 
 The core renders templates and decodes the step config into `NewConfig()`.
@@ -529,6 +529,12 @@ It applies the timeout through `ctx`, measures the duration, and turns the
 | `Captured` | Variables for later steps (`vars.Value{Raw, Secret}`). |
 | `Phases` | `herakles_http_phase_seconds{phase=...}`. |
 | `Transfers` | `herakles_transfer_bytes_per_second{direction=...}`. |
+| `CertExpiry` | `herakles_tls_cert_expiry_timestamp_seconds`. Fill it with `module.CertExpiry(&connState)`. |
+
+`Env` gives a module the target name, the variables (read-only), the cycle's
+HTTP client with keep-alive and cookies, its `TLSConfig` (the target's CA,
+client cert and `insecure_skip_verify`; clone it before changing it), the user
+agent and a W3C `traceparent`.
 
 Optional interfaces:
 
@@ -540,8 +546,8 @@ Add the module's keys to the JSON Schema under `$defs` and `step`.
 
 This contract covers the modules planned next: **grpc** (phases, captures from
 response fields), **s3** (transfers, with payloads as the object body),
-**websocket** (connect, first message, transfer), **tcp** (connect and TLS
-phases) and **exec** (captures from stdout).
+**websocket** (connect, first message, transfer) and **exec** (captures from
+stdout).
 
 ## Design
 
@@ -552,7 +558,7 @@ internal/vars         per-cycle variables, file/env sources, secret redaction
 internal/tmpl         template rendering on the YAML tree, variable references
 internal/engine       per-target loops, cycles, labors, finally, finalizers, validate
 internal/module       the module contract and registry
-internal/modules/     http (httpstep) and payload
+internal/modules/     http (httpstep), tcp (tcpstep) and payload
 internal/metrics      Prometheus observer
 internal/logfmt       log observer and fixed-width handler
 internal/junit        JUnit report observer for -once

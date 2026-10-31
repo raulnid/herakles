@@ -18,11 +18,13 @@ targets:
   - name: dev
     vars:
       base_url: {value: "http://localhost:8080"}
+      api_addr: {value: "localhost:8080"}
   # Same labors, read-only: every step marked mutating is skipped.
   - name: prod
     safe: true
     vars:
       base_url: {value: "http://localhost:8080"}
+      api_addr: {value: "localhost:8080"}
   # Optional: a target behind mTLS. The client cert and key are re-read every
   # cycle, so a cert rotated on disk is used from the next cycle on.
   # - name: partner
@@ -36,6 +38,12 @@ targets:
 labors:
   - name: login
     steps:
+      - name: port-open
+        description: The API port accepts connections
+        tcp:
+          addr: "{{ .vars.api_addr }}"
+          # With an HTTPS endpoint, also check its certificate and expiry:
+          # tls: true
       - name: token
         description: Exchange the API key for a session token
         http:

@@ -52,7 +52,11 @@ type Env struct {
 	TraceParent string
 	Vars        *vars.Vars
 	HTTPClient  *http.Client
-	UserAgent   string
+	// TLSConfig holds the target's TLS settings (CA, client cert,
+	// insecure_skip_verify), the same the HTTP client uses. Shared by the
+	// cycle: Clone it before changing anything.
+	TLSConfig *tls.Config
+	UserAgent string
 }
 
 type Result struct {

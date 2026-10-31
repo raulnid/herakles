@@ -164,6 +164,7 @@ func (r *run) step(ctx context.Context, l *config.Labor, s *config.Step, n, tota
 	t0 := time.Now()
 	env := &module.Env{
 		Target: r.target.Name, Vars: r.vars, HTTPClient: r.client, UserAgent: r.e.cfg.UserAgent,
+		TLSConfig:   r.client.Transport.(*http.Transport).TLSClientConfig,
 		TraceParent: "00-" + r.traceID + "-" + randomHex(8) + "-01", // sampled: probe traffic is worth keeping
 	}
 	res := safeRun(sctx, m, cfg, env)

@@ -11,11 +11,13 @@ targets:
   - name: dev
     vars:
       base_url: {value: "http://eurystheus:8080"}
+      api_addr: {value: "eurystheus:8080"}
   # Same labors, read-only: every step marked mutating is skipped.
   - name: prod
     safe: true
     vars:
       base_url: {value: "http://eurystheus:8080"}
+      api_addr: {value: "eurystheus:8080"}
   # Optional: a target behind mTLS, with the cert-manager Secret mounted at
   # /etc/herakles/tls (see deployment.yaml). Files are re-read every cycle,
   # so short-lived certs are picked up without a restart.
@@ -30,6 +32,12 @@ targets:
 labors:
   - name: login
     steps:
+      - name: port-open
+        description: The API port accepts connections
+        tcp:
+          addr: "{{ .vars.api_addr }}"
+          # With an HTTPS endpoint, also check its certificate and expiry:
+          # tls: true
       - name: token
         description: Exchange the API key for a session token
         http:

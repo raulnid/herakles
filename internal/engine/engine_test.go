@@ -36,6 +36,7 @@ type fakeCfg struct {
 	Transfer bool              `yaml:"transfer"`
 	Panic    bool              `yaml:"panic"`
 	Trace    bool              `yaml:"trace"` // record env.TraceParent instead of Echo
+	TLS      bool              `yaml:"tls"`   // record env.TLSConfig.InsecureSkipVerify
 }
 
 var (
@@ -62,9 +63,13 @@ func (fake) Run(ctx context.Context, cfg any, env *module.Env) module.Result {
 	if c.Panic {
 		panic("boom")
 	}
-	if c.Echo != "" || c.Trace {
+	if c.Echo != "" || c.Trace || c.TLS {
 		ranMu.Lock()
-		ran = append(ran, cmp.Or(c.Echo, env.TraceParent))
+		if c.TLS {
+			ran = append(ran, fmt.Sprint(env.TLSConfig.InsecureSkipVerify))
+		} else {
+			ran = append(ran, cmp.Or(c.Echo, env.TraceParent))
+		}
 		ranMu.Unlock()
 	}
 	select {
@@ -480,6 +485,17 @@ func TestClientCertRotation(t *testing.T) {
 	err := get(mtls)
 	if err == nil || !strings.Contains(err.Error(), keyFile) || strings.Contains(err.Error(), "c2VjcmV0") {
 		t.Errorf("bad key: error must name the file and never quote it: %v", err)
+	}
+}
+
+func TestModulesGetTargetTLS(t *testing.T) {
+	e, _ := setup(t, `
+targets: [{name: dev, tls: {insecure_skip_verify: true}}]
+labors: [{name: l, steps: [{name: s, fake: {tls: true}}]}]
+`)
+	e.Once(context.Background())
+	if got := ranSteps(); !slices.Equal(got, []string{"true"}) {
+		t.Errorf("env.TLSConfig.InsecureSkipVerify = %v, want the target's true", got)
 	}
 }
 

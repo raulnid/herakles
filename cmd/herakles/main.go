@@ -25,6 +25,7 @@ import (
 	"github.com/raulnid/herakles/internal/logfmt"
 	"github.com/raulnid/herakles/internal/metrics"
 	_ "github.com/raulnid/herakles/internal/modules/httpstep"
+	_ "github.com/raulnid/herakles/internal/modules/tcpstep"
 )
 
 const usage = `usage:

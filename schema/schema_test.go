@@ -67,6 +67,9 @@ func TestSchemaRejects(t *testing.T) {
 		"bad size":          strings.Replace(base, "STEP", "{name: s, http: {body: {payload: {kind: zip, size: 5 megs}}}}", 1),
 		"var two sources":   "vars: {k: {value: 1, env: K}}\n" + strings.Replace(base, "STEP", "{name: s, http: {}}", 1),
 		"bad duration":      "interval: soon\n" + strings.Replace(base, "STEP", "{name: s, http: {}}", 1),
+		"tcp without addr":  strings.Replace(base, "STEP", "{name: s, tcp: {tls: true}}", 1),
+		"tcp sni no tls":    strings.Replace(base, "STEP", "{name: s, tcp: {addr: \"h:1\", server_name: h}}", 1),
+		"http and tcp":      strings.Replace(base, "STEP", "{name: s, http: {}, tcp: {addr: \"h:1\"}}", 1),
 		"cert without key":  strings.Replace(strings.Replace(base, "STEP", "{name: s, http: {}}", 1), "{name: dev}", "{name: dev, tls: {cert_file: c.pem}}", 1),
 		"key without cert":  strings.Replace(strings.Replace(base, "STEP", "{name: s, http: {}}", 1), "{name: dev}", "{name: dev, tls: {key_file: k.pem}}", 1),
 	}

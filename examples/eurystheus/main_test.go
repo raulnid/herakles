@@ -17,6 +17,7 @@ import (
 	"github.com/raulnid/herakles/internal/logfmt"
 	"github.com/raulnid/herakles/internal/metrics"
 	_ "github.com/raulnid/herakles/internal/modules/httpstep"
+	_ "github.com/raulnid/herakles/internal/modules/tcpstep"
 )
 
 // loadExample loads examples/herakles.yaml pointed at a test server.
@@ -29,6 +30,7 @@ func loadExample(t *testing.T, url string) *config.Config {
 	cfg.Vars["api_key"] = config.Var{File: "../demo-api-key"}
 	for i := range cfg.Targets {
 		cfg.Targets[i].Vars["base_url"] = config.Var{Value: url}
+		cfg.Targets[i].Vars["api_addr"] = config.Var{Value: strings.TrimPrefix(url, "http://")}
 	}
 	if err := engine.Validate(cfg); err != nil {
 		t.Fatal(err)

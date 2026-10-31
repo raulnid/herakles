@@ -41,7 +41,7 @@ herakles_step_skipped{labor="projects",step="upload",target="prod"} 1
 # TYPE herakles_step_last_duration_seconds gauge
 herakles_step_last_duration_seconds{labor="projects",step="download",target="dev"} 0.003
 herakles_step_last_duration_seconds{labor="projects",step="upload",target="dev"} 1.5
-# HELP herakles_http_phase_seconds Phases of the last HTTP request of the step: dns, connect, tls, wait, transfer, total.
+# HELP herakles_http_phase_seconds Phases of the last network request of the step: dns, connect, tls, wait, transfer, total.
 # TYPE herakles_http_phase_seconds gauge
 herakles_http_phase_seconds{labor="projects",phase="tls",step="upload",target="dev"} 0
 herakles_http_phase_seconds{labor="projects",phase="wait",step="upload",target="dev"} 0.02

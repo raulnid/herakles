@@ -93,9 +93,22 @@
         "description": { "type": "string", "description": "What the step does, shown in the log when it starts." },
         "optional": { "type": "boolean", "description": "A failure is recorded but the labor goes on." },
         "mutating": { "type": "boolean", "description": "The step writes; it is skipped on safe targets." },
-        "http": { "$ref": "#/$defs/http" }
+        "http": { "$ref": "#/$defs/http" },
+        "tcp": { "$ref": "#/$defs/tcp" }
       },
-      "oneOf": [{ "required": ["http"] }]
+      "oneOf": [{ "required": ["http"] }, { "required": ["tcp"] }]
+    },
+    "tcp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["addr"],
+      "description": "Open a TCP connection, optionally complete a TLS handshake with the target's tls settings, and close it.",
+      "properties": {
+        "addr": { "type": "string", "description": "host:port to connect to." },
+        "tls": { "type": "boolean", "description": "Complete a TLS handshake: CA, client cert and insecure_skip_verify come from the target." },
+        "server_name": { "type": "string", "description": "SNI and the name verified in the server cert. Default: the host of addr." }
+      },
+      "dependentSchemas": { "server_name": { "properties": { "tls": { "const": true } }, "required": ["tls"] } }
     },
     "http": {
       "type": "object",
