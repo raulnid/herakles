@@ -85,3 +85,31 @@ herakles_cycle_success{target="dev"} 0
 		t.Errorf("last success timestamp = %v", v)
 	}
 }
+
+func TestRunCounters(t *testing.T) {
+	m := New(prometheus.NewRegistry())
+	cycle := func(step, labor engine.Status) {
+		m.StepEnd(engine.StepReport{Target: "dev", Labor: "l", Step: "s", Status: step})
+		m.LaborEnd(engine.LaborReport{Target: "dev", Labor: "l", Status: labor})
+	}
+	cycle(engine.OK, engine.OK)
+	cycle(engine.OK, engine.OK)
+	cycle(engine.Failed, engine.Failed)
+	cycle(engine.Skipped, engine.Skipped)
+
+	want := map[string]float64{"ok": 2, "failed": 1, "skipped": 1}
+	for result, n := range want {
+		if v := testutil.ToFloat64(m.stepRuns.WithLabelValues("dev", "l", "s", result)); v != n {
+			t.Errorf("step_runs_total{result=%q} = %v, want %v", result, v, n)
+		}
+		if v := testutil.ToFloat64(m.laborRuns.WithLabelValues("dev", "l", result)); v != n {
+			t.Errorf("labor_runs_total{result=%q} = %v, want %v", result, v, n)
+		}
+	}
+
+	// A labor that only ever passed still exposes its failed series at 0.
+	m.LaborEnd(engine.LaborReport{Target: "dev", Labor: "fresh", Status: engine.OK})
+	if n := testutil.CollectAndCount(m.laborRuns); n != 6 {
+		t.Errorf("labor_runs_total has %d series, want 3 per labor", n)
+	}
+}

@@ -55,3 +55,42 @@ spec:
           labels: {severity: warning}
           annotations:
             summary: "A certificate served to {{ $labels.labor }}/{{ $labels.step }} on {{ $labels.target }} expires in {{ $value | humanizeDuration }}"
+
+    # SLO on the user journey: 99.9% of labor runs pass over 30 days.
+    # Multiwindow burn rate (Google SRE workbook): 14.4x over 1h/5m pages for
+    # 2% of the monthly budget, 6x over 6h/30m for 5%.
+    - name: herakles-slo
+      rules:
+        - record: herakles:labor_error_ratio:rate5m
+          expr: |
+            sum by (target, labor) (rate(herakles_labor_runs_total{result="failed"}[5m]))
+            /
+            sum by (target, labor) (rate(herakles_labor_runs_total{result=~"ok|failed"}[5m]))
+        - record: herakles:labor_error_ratio:rate30m
+          expr: |
+            sum by (target, labor) (rate(herakles_labor_runs_total{result="failed"}[30m]))
+            /
+            sum by (target, labor) (rate(herakles_labor_runs_total{result=~"ok|failed"}[30m]))
+        - record: herakles:labor_error_ratio:rate1h
+          expr: |
+            sum by (target, labor) (rate(herakles_labor_runs_total{result="failed"}[1h]))
+            /
+            sum by (target, labor) (rate(herakles_labor_runs_total{result=~"ok|failed"}[1h]))
+        - record: herakles:labor_error_ratio:rate6h
+          expr: |
+            sum by (target, labor) (rate(herakles_labor_runs_total{result="failed"}[6h]))
+            /
+            sum by (target, labor) (rate(herakles_labor_runs_total{result=~"ok|failed"}[6h]))
+        - alert: HeraklesLaborErrorBudgetBurn
+          expr: |
+            (
+              herakles:labor_error_ratio:rate1h > (14.4 * 0.001)
+              and herakles:labor_error_ratio:rate5m > (14.4 * 0.001)
+            ) or (
+              herakles:labor_error_ratio:rate6h > (6 * 0.001)
+              and herakles:labor_error_ratio:rate30m > (6 * 0.001)
+            )
+          labels: {severity: critical}
+          annotations:
+            summary: "Labor {{ $labels.labor }} on {{ $labels.target }} burns its 99.9% error budget too fast"
+            description: 'Failing steps: topk(3, sum by (step) (increase(herakles_step_runs_total{target="{{ $labels.target }}",labor="{{ $labels.labor }}",result="failed"}[1h])))'

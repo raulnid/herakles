@@ -330,11 +330,65 @@ All metrics are prefixed `herakles_` and labeled `target`, plus `labor`,
 | `http_phase_seconds` | gauge | target, labor, step, phase | Phases of the last HTTP request: `dns`, `connect`, `tls`, `wait` (request sent to first byte), `transfer`, `total`. On a reused connection `dns`, `connect` and `tls` are 0. |
 | `transfer_bytes_per_second` | gauge | target, labor, step, direction | Rate of the last `upload` or `download`. |
 | `tls_cert_expiry_timestamp_seconds` | gauge | target, labor, step | Earliest `NotAfter` in the server certificate chain, set by steps that got a TLS response, reused connections included. Days left: `(herakles_tls_cert_expiry_timestamp_seconds - time()) / 86400`. |
+| `labor_runs_total` | counter | target, labor, result | Labor runs by `result`: `ok`, `failed` or `skipped`. The SLO metric. |
+| `step_runs_total` | counter | target, labor, step, result | Step attempts by `result`. For diagnosis: which step burns the budget. |
 | `build_info` | gauge | version, goversion | Always 1. Shows which herakles version runs where: `herakles_build_info{version!="0.2.0"}`. |
 | `cycle_success` | gauge | target | 1 if every required step of the last cycle passed. It is 0 when variables cannot be resolved, for example an unreadable secret file. |
 
-A skipped labor does not update its series. Its last success timestamp ages,
-which is exactly what a staleness alert should catch.
+A skipped labor does not update its gauges. Its last success timestamp ages,
+which is exactly what a staleness alert should catch. It does count as
+`result="skipped"`.
+
+### SLOs: counters next to gauges
+
+Gauges hold only the last state: a scrape every 30 seconds cannot tell you how
+many cycles failed last month. The run counters can, so they back success
+ratios over any window and burn-rate alerts. Every `result` series is created
+at 0 the first time a labor or step runs, so `rate()` sees the first failure.
+
+A labor is the user journey (log in, upload, download), so the SLO is on
+`labor_runs_total`. Skipped runs are left out: a labor skipped after an
+earlier one failed is already counted as that failure.
+
+```promql
+# Success ratio over 30 days, per target and labor
+sum by (target, labor) (increase(herakles_labor_runs_total{result="ok"}[30d]))
+/
+sum by (target, labor) (increase(herakles_labor_runs_total{result=~"ok|failed"}[30d]))
+```
+
+For a 99.9% objective the error budget is 0.1%. The multiwindow burn-rate
+alert from the Google SRE workbook pages when the budget burns 14.4 times too
+fast over 1h (2% of the monthly budget) or 6 times too fast over 6h (5%). Each
+long window is paired with a short one (5m, 30m), so the alert stops soon
+after the problem does:
+
+```promql
+(
+  herakles:labor_error_ratio:rate1h > (14.4 * 0.001) and herakles:labor_error_ratio:rate5m > (14.4 * 0.001)
+) or (
+  herakles:labor_error_ratio:rate6h > (6 * 0.001) and herakles:labor_error_ratio:rate30m > (6 * 0.001)
+)
+```
+
+where each `herakles:labor_error_ratio:rateW` is a recording rule:
+
+```promql
+sum by (target, labor) (rate(herakles_labor_runs_total{result="failed"}[W]))
+/
+sum by (target, labor) (rate(herakles_labor_runs_total{result=~"ok|failed"}[W]))
+```
+
+The recording rules and the `HeraklesLaborErrorBudgetBurn` alert are in the
+example PrometheusRule. A probe runs far fewer requests than real traffic:
+with `interval: 30s`, the 5m window holds about 10 runs, so one failure is a
+10% error ratio and passes the short threshold on its own. The long window is
+what keeps a single failure from paging. When the burn alert fires,
+`step_runs_total` shows which step fails:
+
+```promql
+topk(3, sum by (labor, step) (increase(herakles_step_runs_total{target="prod",result="failed"}[1h])))
+```
 
 ### Why exact gauges next to histograms
 

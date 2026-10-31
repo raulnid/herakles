@@ -31,6 +31,8 @@ type Metrics struct {
 	transferRate     *prometheus.GaugeVec
 	cycleSuccess     *prometheus.GaugeVec
 	certExpiry       *prometheus.GaugeVec
+	stepRuns         *prometheus.CounterVec
+	laborRuns        *prometheus.CounterVec
 }
 
 var _ engine.Observer = (*Metrics)(nil)
@@ -49,6 +51,11 @@ func New(reg prometheus.Registerer) *Metrics {
 		reg.MustRegister(h)
 		return h
 	}
+	counter := func(name, help string, labels ...string) *prometheus.CounterVec {
+		c := prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: ns, Name: name, Help: help}, append(labels, "result"))
+		reg.MustRegister(c)
+		return c
+	}
 	return &Metrics{
 		stepDuration:     hist("step_duration_seconds", "Duration of each step attempt.", step...),
 		stepLastDuration: gauge("step_last_duration_seconds", "Exact duration of the last attempt of the step.", step...),
@@ -62,6 +69,8 @@ func New(reg prometheus.Registerer) *Metrics {
 		httpPhase:        gauge("http_phase_seconds", "Phases of the last HTTP request of the step: dns, connect, tls, wait, transfer, total.", append(step, "phase")...),
 		transferRate:     gauge("transfer_bytes_per_second", "Rate of the last upload or download of the step.", append(step, "direction")...),
 		cycleSuccess:     gauge("cycle_success", "1 if every required step of the last cycle passed. 0 also when variables could not be resolved.", "target"),
+		stepRuns:         counter("step_runs_total", "Step attempts by result: ok, failed or skipped.", step...),
+		laborRuns:        counter("labor_runs_total", "Labor runs by result: ok, failed or skipped.", labor...),
 		certExpiry:       gauge("tls_cert_expiry_timestamp_seconds", "Unix time of the earliest NotAfter in the server certificate chain seen by the step.", step...),
 	}
 }
@@ -70,6 +79,7 @@ func (m *Metrics) StepStart(engine.StepReport) {}
 
 func (m *Metrics) StepEnd(r engine.StepReport) {
 	l := prometheus.Labels{"target": r.Target, "labor": r.Labor, "step": r.Step}
+	count(m.stepRuns, r.Status, r.Target, r.Labor, r.Step)
 	if r.Status == engine.Skipped {
 		m.stepSkipped.With(l).Set(1)
 		return
@@ -92,6 +102,7 @@ func (m *Metrics) StepEnd(r engine.StepReport) {
 // LaborEnd leaves the series of a skipped labor untouched: its last success
 // timestamp ages, which is what a staleness alert watches.
 func (m *Metrics) LaborEnd(r engine.LaborReport) {
+	count(m.laborRuns, r.Status, r.Target, r.Labor)
 	if r.Status == engine.Skipped {
 		return
 	}
@@ -109,6 +120,17 @@ func (m *Metrics) LaborEnd(r engine.LaborReport) {
 
 func (m *Metrics) CycleEnd(r engine.CycleReport) {
 	m.cycleSuccess.WithLabelValues(r.Target).Set(bool01(r.OK))
+}
+
+// count increments the series of status and creates the other results at 0:
+// rate() cannot see the first failure of a series that is born at 1.
+func count(c *prometheus.CounterVec, status engine.Status, labels ...string) {
+	for _, s := range []engine.Status{engine.OK, engine.Failed, engine.Skipped} {
+		v := c.WithLabelValues(append(labels, s.String())...)
+		if s == status {
+			v.Inc()
+		}
+	}
 }
 
 func bool01(b bool) float64 {
