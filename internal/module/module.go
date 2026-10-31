@@ -12,6 +12,7 @@ package module
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -60,6 +61,25 @@ type Result struct {
 	// Phases of the last network request, e.g. dns, connect, tls, wait, transfer, total.
 	Phases    map[string]time.Duration
 	Transfers []Transfer
+	// CertExpiry is the earliest NotAfter of the server's certificate chain,
+	// zero when the step did not talk TLS. See CertExpiry.
+	CertExpiry time.Time
+}
+
+// CertExpiry returns the earliest NotAfter of the peer chain of a TLS
+// connection, or zero for nil. Connection state is kept on reused
+// connections too, so it does not depend on a fresh handshake.
+func CertExpiry(cs *tls.ConnectionState) time.Time {
+	var t time.Time
+	if cs == nil {
+		return t
+	}
+	for _, c := range cs.PeerCertificates {
+		if t.IsZero() || c.NotAfter.Before(t) {
+			t = c.NotAfter
+		}
+	}
+	return t
 }
 
 type Transfer struct {

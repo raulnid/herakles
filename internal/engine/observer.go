@@ -30,6 +30,7 @@ type StepReport struct {
 	Captured                         []string // variables the step set; names only, never values
 	Phases                           map[string]time.Duration
 	Transfers                        []module.Transfer
+	CertExpiry                       time.Time // earliest NotAfter of the server chain; zero without TLS
 }
 
 type LaborReport struct {

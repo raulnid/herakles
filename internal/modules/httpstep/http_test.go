@@ -3,6 +3,7 @@ package httpstep
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -18,6 +19,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/raulnid/herakles/internal/module"
+	"github.com/raulnid/herakles/internal/testpki"
 	"github.com/raulnid/herakles/internal/vars"
 )
 
@@ -256,6 +258,36 @@ func TestTLSPhasesAndReuse(t *testing.T) {
 	second := run(t, client, config(t, "url: "+srv.URL))
 	if second.Phases["tls"] != 0 || second.Phases["connect"] != 0 {
 		t.Errorf("reused connection must report zero tls and connect: %v", second.Phases)
+	}
+}
+
+func TestCertExpiry(t *testing.T) {
+	ca := testpki.NewCA(t) // expires in 24h
+	leaf := ca.Issue(t, 2, time.Now().Add(48*time.Hour).Truncate(time.Second))
+	leaf.TLS.Certificate = append(leaf.TLS.Certificate, ca.Cert.Raw) // the CA expires first
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	srv.TLS = &tls.Config{Certificates: []tls.Certificate{leaf.TLS}}
+	srv.StartTLS()
+	defer srv.Close()
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: ca.Pool}}}
+
+	for i, name := range []string{"fresh", "reused"} {
+		res := run(t, client, config(t, "url: "+srv.URL))
+		if res.Err != nil {
+			t.Fatal(res.Err)
+		}
+		if i == 1 && res.Phases["tls"] != 0 {
+			t.Fatalf("second request did not reuse the connection: %v", res.Phases)
+		}
+		if !res.CertExpiry.Equal(ca.Cert.NotAfter) {
+			t.Errorf("%s connection: CertExpiry = %v, want the CA's %v", name, res.CertExpiry, ca.Cert.NotAfter)
+		}
+	}
+
+	plain := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer plain.Close()
+	if res := run(t, nil, config(t, "url: "+plain.URL)); !res.CertExpiry.IsZero() {
+		t.Errorf("plain HTTP: CertExpiry = %v, want zero", res.CertExpiry)
 	}
 }
 

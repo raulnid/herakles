@@ -48,3 +48,10 @@ spec:
           labels: {severity: warning}
           annotations:
             summary: "{{ $labels.direction }} on {{ $labels.target }} below 1 MB/s for 15 minutes"
+        - alert: HeraklesCertExpiringSoon
+          # Earliest NotAfter in the chain the step saw, intermediates included.
+          expr: herakles_tls_cert_expiry_timestamp_seconds - time() < 7 * 86400
+          for: 1h
+          labels: {severity: warning}
+          annotations:
+            summary: "A certificate served to {{ $labels.labor }}/{{ $labels.step }} on {{ $labels.target }} expires in {{ $value | humanizeDuration }}"

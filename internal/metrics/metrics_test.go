@@ -19,7 +19,8 @@ func TestSeries(t *testing.T) {
 	m.StepEnd(engine.StepReport{Target: "dev", Labor: "projects", Step: "upload", Status: engine.OK, Duration: 1500 * time.Millisecond,
 		Phases:    map[string]time.Duration{"wait": 20 * time.Millisecond, "tls": 0},
 		Transfers: []module.Transfer{{Direction: "upload", Bytes: 6 << 20, Duration: time.Second}}})
-	m.StepEnd(engine.StepReport{Target: "dev", Labor: "projects", Step: "download", Status: engine.Failed, Duration: 3 * time.Millisecond})
+	m.StepEnd(engine.StepReport{Target: "dev", Labor: "projects", Step: "download", Status: engine.Failed, Duration: 3 * time.Millisecond,
+		CertExpiry: time.Unix(1893456000, 0)})
 	m.StepEnd(engine.StepReport{Target: "prod", Labor: "projects", Step: "upload", Status: engine.Skipped})
 	m.LaborEnd(engine.LaborReport{Target: "dev", Labor: "projects", Status: engine.Failed, FailedStep: "download",
 		Duration: 2 * time.Second, Steps: []string{"upload", "download", "cleanup"}})
@@ -55,12 +56,16 @@ herakles_labor_success{labor="projects",target="dev"} 0
 herakles_labor_failed_step{labor="projects",step="cleanup",target="dev"} 0
 herakles_labor_failed_step{labor="projects",step="download",target="dev"} 1
 herakles_labor_failed_step{labor="projects",step="upload",target="dev"} 0
+# HELP herakles_tls_cert_expiry_timestamp_seconds Unix time of the earliest NotAfter in the server certificate chain seen by the step.
+# TYPE herakles_tls_cert_expiry_timestamp_seconds gauge
+herakles_tls_cert_expiry_timestamp_seconds{labor="projects",step="download",target="dev"} 1.893456e+09
 # HELP herakles_cycle_success 1 if every required step of the last cycle passed. 0 also when variables could not be resolved.
 # TYPE herakles_cycle_success gauge
 herakles_cycle_success{target="dev"} 0
 `
 	names := []string{"herakles_step_success", "herakles_step_skipped", "herakles_step_last_duration_seconds", "herakles_http_phase_seconds",
-		"herakles_transfer_bytes_per_second", "herakles_labor_success", "herakles_labor_failed_step", "herakles_cycle_success"}
+		"herakles_transfer_bytes_per_second", "herakles_labor_success", "herakles_labor_failed_step", "herakles_cycle_success",
+		"herakles_tls_cert_expiry_timestamp_seconds"}
 	if err := testutil.GatherAndCompare(reg, strings.NewReader(want), names...); err != nil {
 		t.Error(err)
 	}

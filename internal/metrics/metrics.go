@@ -30,6 +30,7 @@ type Metrics struct {
 	httpPhase        *prometheus.GaugeVec
 	transferRate     *prometheus.GaugeVec
 	cycleSuccess     *prometheus.GaugeVec
+	certExpiry       *prometheus.GaugeVec
 }
 
 var _ engine.Observer = (*Metrics)(nil)
@@ -61,6 +62,7 @@ func New(reg prometheus.Registerer) *Metrics {
 		httpPhase:        gauge("http_phase_seconds", "Phases of the last HTTP request of the step: dns, connect, tls, wait, transfer, total.", append(step, "phase")...),
 		transferRate:     gauge("transfer_bytes_per_second", "Rate of the last upload or download of the step.", append(step, "direction")...),
 		cycleSuccess:     gauge("cycle_success", "1 if every required step of the last cycle passed. 0 also when variables could not be resolved.", "target"),
+		certExpiry:       gauge("tls_cert_expiry_timestamp_seconds", "Unix time of the earliest NotAfter in the server certificate chain seen by the step.", step...),
 	}
 }
 
@@ -81,6 +83,9 @@ func (m *Metrics) StepEnd(r engine.StepReport) {
 	}
 	for _, t := range r.Transfers {
 		m.transferRate.WithLabelValues(r.Target, r.Labor, r.Step, t.Direction).Set(t.BytesPerSecond())
+	}
+	if !r.CertExpiry.IsZero() {
+		m.certExpiry.With(l).Set(float64(r.CertExpiry.Unix()))
 	}
 }
 

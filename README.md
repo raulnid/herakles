@@ -329,6 +329,7 @@ All metrics are prefixed `herakles_` and labeled `target`, plus `labor`,
 | `labor_failed_step` | gauge | target, labor, step | 1 on the required step that failed the last run, 0 on the others. |
 | `http_phase_seconds` | gauge | target, labor, step, phase | Phases of the last HTTP request: `dns`, `connect`, `tls`, `wait` (request sent to first byte), `transfer`, `total`. On a reused connection `dns`, `connect` and `tls` are 0. |
 | `transfer_bytes_per_second` | gauge | target, labor, step, direction | Rate of the last `upload` or `download`. |
+| `tls_cert_expiry_timestamp_seconds` | gauge | target, labor, step | Earliest `NotAfter` in the server certificate chain, set by steps that got a TLS response, reused connections included. Days left: `(herakles_tls_cert_expiry_timestamp_seconds - time()) / 86400`. |
 | `build_info` | gauge | version, goversion | Always 1. Shows which herakles version runs where: `herakles_build_info{version!="0.2.0"}`. |
 | `cycle_success` | gauge | target | 1 if every required step of the last cycle passed. It is 0 when variables cannot be resolved, for example an unreadable secret file. |
 
@@ -348,7 +349,7 @@ quantile_over_time(0.95, herakles_http_phase_seconds{phase="wait"}[1h])
 ```
 
 Example alerts (failing labor, stale labor, failing cycle, slow step, slow
-transfer) are in
+transfer, certificate expiring) are in
 [`examples/kubernetes/monitoring/prometheusrule.yaml`](examples/kubernetes/monitoring/prometheusrule.yaml).
 
 ### Health
