@@ -3,6 +3,7 @@ package engine
 import (
 	"cmp"
 	"context"
+	"crypto/tls"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/raulnid/herakles/internal/config"
 	"github.com/raulnid/herakles/internal/module"
+	"github.com/raulnid/herakles/internal/testpki"
 	"github.com/raulnid/herakles/internal/vars"
 )
 
@@ -423,6 +425,84 @@ func TestClientTLS(t *testing.T) {
 	}
 	if err := get(config.TLS{CAFile: "/nonexistent/ca.pem"}); err == nil || !strings.Contains(err.Error(), "ca_file") {
 		t.Errorf("missing ca_file: %v", err)
+	}
+}
+
+func TestClientCertRotation(t *testing.T) {
+	ca := testpki.NewCA(t)
+	var mu sync.Mutex
+	var serials []int64
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		serials = append(serials, r.TLS.PeerCertificates[0].SerialNumber.Int64())
+		mu.Unlock()
+	}))
+	srv.TLS = &tls.Config{ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: ca.Pool, Certificates: []tls.Certificate{ca.Issue(t, 1, time.Now().Add(time.Hour)).TLS}}
+	srv.StartTLS()
+	defer srv.Close()
+
+	dir := t.TempDir()
+	caFile, certFile, keyFile := filepath.Join(dir, "ca.pem"), filepath.Join(dir, "tls.crt"), filepath.Join(dir, "tls.key")
+	write := func(name string, b []byte) {
+		if err := os.WriteFile(name, b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(caFile, ca.PEM)
+	get := func(c config.TLS) error {
+		client, err := newClient(c) // what each cycle does
+		if err != nil {
+			return err
+		}
+		resp, err := client.Get(srv.URL)
+		if err == nil {
+			resp.Body.Close()
+		}
+		return err
+	}
+	if err := get(config.TLS{CAFile: caFile}); err == nil {
+		t.Error("server requires a client cert, request without one succeeded")
+	}
+	mtls := config.TLS{CAFile: caFile, CertFile: certFile, KeyFile: keyFile}
+	for _, serial := range []int64{10, 11} { // rotated on disk between two cycles
+		p := ca.Issue(t, serial, time.Now().Add(24*time.Hour))
+		write(certFile, p.CertPEM)
+		write(keyFile, p.KeyPEM)
+		if err := get(mtls); err != nil {
+			t.Fatalf("cert %d: %v", serial, err)
+		}
+	}
+	if !slices.Equal(serials, []int64{10, 11}) {
+		t.Errorf("server saw client certs %v, want [10 11]", serials)
+	}
+
+	write(keyFile, []byte("-----BEGIN EC PRIVATE KEY-----\nc2VjcmV0LWtleS1tYXRlcmlhbA==\n-----END EC PRIVATE KEY-----\n"))
+	err := get(mtls)
+	if err == nil || !strings.Contains(err.Error(), keyFile) || strings.Contains(err.Error(), "c2VjcmV0") {
+		t.Errorf("bad key: error must name the file and never quote it: %v", err)
+	}
+}
+
+func TestMissingClientCertFailsOnlyItsTarget(t *testing.T) {
+	e, rec := setup(t, `
+targets:
+  - {name: mtls, tls: {cert_file: /nonexistent/tls.crt, key_file: /nonexistent/tls.key}}
+  - {name: dev}
+labors: [{name: l, steps: [{name: s, fake: {}}]}]
+`)
+	if e.Once(context.Background()) {
+		t.Error("Once = true, want false")
+	}
+	for _, c := range rec.cycles {
+		switch {
+		case c.Target == "mtls" && (c.OK || c.Err == nil || !strings.Contains(c.Err.Error(), "/nonexistent/tls.crt")):
+			t.Errorf("mtls cycle must fail naming the file: %+v", c)
+		case c.Target == "dev" && !c.OK:
+			t.Errorf("healthy target failed: %+v", c)
+		}
+	}
+	if len(rec.cycles) != 2 || rec.labor("dev", "l").Status != OK {
+		t.Errorf("cycles %+v labors %+v", rec.cycles, rec.labors)
 	}
 }
 

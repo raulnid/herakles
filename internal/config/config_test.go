@@ -64,6 +64,8 @@ func TestParseErrors(t *testing.T) {
 		"no var source":       {base + "vars: {x: {secret: true}}\n", "exactly one of value, file or env"},
 		"bad var name":        {base + "vars: {my-key: {value: 1}}\n", "name must match"},
 		"step name missing":   {"targets: [{name: dev}]\nlabors: [{name: l, steps: [{http: {}}]}]", "name is required"},
+		"cert without key":    {"targets: [{name: dev, tls: {cert_file: c.pem}}]\nlabors: [{name: l, steps: [{name: s, http: {}}]}]", "cert_file and key_file go together"},
+		"missing pair is ok":  {"targets: [{name: dev, tls: {cert_file: /nonexistent/c.pem, key_file: /nonexistent/k.pem}}]\nlabors: [{name: l, steps: [{name: s, http: {}}]}]", ""},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

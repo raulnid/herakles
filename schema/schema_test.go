@@ -67,6 +67,8 @@ func TestSchemaRejects(t *testing.T) {
 		"bad size":          strings.Replace(base, "STEP", "{name: s, http: {body: {payload: {kind: zip, size: 5 megs}}}}", 1),
 		"var two sources":   "vars: {k: {value: 1, env: K}}\n" + strings.Replace(base, "STEP", "{name: s, http: {}}", 1),
 		"bad duration":      "interval: soon\n" + strings.Replace(base, "STEP", "{name: s, http: {}}", 1),
+		"cert without key":  strings.Replace(strings.Replace(base, "STEP", "{name: s, http: {}}", 1), "{name: dev}", "{name: dev, tls: {cert_file: c.pem}}", 1),
+		"key without cert":  strings.Replace(strings.Replace(base, "STEP", "{name: s, http: {}}", 1), "{name: dev}", "{name: dev, tls: {key_file: k.pem}}", 1),
 	}
 	for name, src := range cases {
 		if err := validate(s, []byte(src)); err == nil {
@@ -75,5 +77,9 @@ func TestSchemaRejects(t *testing.T) {
 	}
 	if err := validate(s, []byte(strings.Replace(base, "STEP", `{name: s, http: {assert: {status: ["{{ .vars.code }}"], size: "{{ .vars.up.size }}"}}}`, 1))); err != nil {
 		t.Errorf("templated fields rejected: %v", err)
+	}
+	mtls := strings.Replace(strings.Replace(base, "STEP", "{name: s, http: {}}", 1), "{name: dev}", "{name: dev, tls: {ca_file: ca.pem, cert_file: c.pem, key_file: k.pem}}", 1)
+	if err := validate(s, []byte(mtls)); err != nil {
+		t.Errorf("mTLS target rejected: %v", err)
 	}
 }

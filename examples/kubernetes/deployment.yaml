@@ -45,8 +45,13 @@ spec:
           volumeMounts:
             - {name: config, mountPath: /etc/herakles/config, readOnly: true}
             - {name: secrets, mountPath: /etc/herakles/secrets, readOnly: true}
+            - {name: tls, mountPath: /etc/herakles/tls, readOnly: true}
       volumes:
         - name: config
           configMap: {name: herakles-config}
         - name: secrets
           secret: {secretName: herakles-api-key}
+        # Optional client cert for mTLS targets, e.g. issued by cert-manager.
+        # Without the Secret the pod still starts; only targets using it fail.
+        - name: tls
+          secret: {secretName: herakles-client-tls, optional: true}

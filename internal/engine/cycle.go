@@ -237,6 +237,14 @@ func newClient(c config.TLS) (*http.Client, error) {
 		}
 		tr.TLSClientConfig.RootCAs = pool
 	}
+	if c.CertFile != "" {
+		// The error names the files only: crypto/tls never quotes key material.
+		cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("tls cert_file %s, key_file %s: %w", c.CertFile, c.KeyFile, err)
+		}
+		tr.TLSClientConfig.Certificates = []tls.Certificate{cert}
+	}
 	jar, _ := cookiejar.New(nil) // never fails with nil options
 	return &http.Client{Transport: tr, Jar: jar}, nil
 }

@@ -150,7 +150,17 @@ targets:
     tls:
       ca_file: /etc/ssl/internal-ca.pem # added to the system roots, read every cycle
       insecure_skip_verify: false
+      cert_file: /etc/herakles/tls/tls.crt # client cert for mTLS, with key_file
+      key_file: /etc/herakles/tls/tls.key
 ```
+
+All TLS files are read again at the start of every cycle. A short-lived client
+certificate (cert-manager, step-ca) rotated on disk is used from the next cycle
+on, without a restart. `cert_file` and `key_file` go together; `validate`
+checks that, but not that the files exist. If a file is missing or does not
+load, the cycle of that target fails (`herakles_cycle_success` 0, the error
+with the file path in the log) and every other target keeps running, so a
+Secret that does not exist yet cannot stop the other probes.
 
 ### Labors and steps
 
@@ -373,6 +383,7 @@ herakles treats its config as trusted: the operator's own input. It treats
 everything that comes back from the probed services as untrusted.
 
 - **Secrets stay out of the config and out of the output.** They are read from files or the environment. Variable values never reach the logger. Every error is masked for each secret, raw, URL-encoded and JSON-escaped.
+- **Client keys are secrets too.** `key_file` is read from disk every cycle and never logged: errors name the file, never its content.
 - **No template injection.** Templates come only from the config and run once per step. A captured value that contains `{{ ... }}` stays literal text.
 - **No header injection.** Go rejects header values with line breaks, and herakles rejects them in multipart part headers.
 - **No log injection.** Every event is one line: line breaks in messages and attributes are replaced.

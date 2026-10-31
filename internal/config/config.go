@@ -47,6 +47,10 @@ type Target struct {
 type TLS struct {
 	CAFile             string `yaml:"ca_file"` // added to the system roots, re-read every cycle
 	InsecureSkipVerify bool   `yaml:"insecure_skip_verify"`
+	// Client certificate for mTLS, both or neither. Re-read every cycle, so
+	// short-lived certs rotated on disk are picked up without a restart.
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
 }
 
 type Labor struct {

@@ -95,6 +95,9 @@ func (c *Config) validate() error {
 		}
 		targets[t.Name] = true
 		checkVars("target "+t.Name, t.Vars)
+		if (t.TLS.CertFile == "") != (t.TLS.KeyFile == "") {
+			add("target %q: tls cert_file and key_file go together", t.Name)
+		}
 	}
 
 	if len(c.Labors) == 0 {

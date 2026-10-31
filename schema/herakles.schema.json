@@ -60,8 +60,11 @@
           "additionalProperties": false,
           "properties": {
             "ca_file": { "type": "string", "description": "PEM bundle added to the system roots, read every cycle." },
-            "insecure_skip_verify": { "type": "boolean", "description": "Do not verify server certificates." }
-          }
+            "insecure_skip_verify": { "type": "boolean", "description": "Do not verify server certificates." },
+            "cert_file": { "type": "string", "description": "PEM client certificate for mTLS, read every cycle. Requires key_file." },
+            "key_file": { "type": "string", "description": "PEM private key of cert_file, read every cycle. Never logged." }
+          },
+          "dependentRequired": { "cert_file": ["key_file"], "key_file": ["cert_file"] }
         }
       }
     },

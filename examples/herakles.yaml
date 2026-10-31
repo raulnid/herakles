@@ -23,6 +23,15 @@ targets:
     safe: true
     vars:
       base_url: {value: "http://localhost:8080"}
+  # Optional: a target behind mTLS. The client cert and key are re-read every
+  # cycle, so a cert rotated on disk is used from the next cycle on.
+  # - name: partner
+  #   vars:
+  #     base_url: {value: "https://partner.example.com"}
+  #   tls:
+  #     ca_file: /etc/herakles/tls/ca.crt
+  #     cert_file: /etc/herakles/tls/tls.crt
+  #     key_file: /etc/herakles/tls/tls.key
 
 labors:
   - name: login

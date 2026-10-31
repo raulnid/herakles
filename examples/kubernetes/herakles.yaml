@@ -16,6 +16,16 @@ targets:
     safe: true
     vars:
       base_url: {value: "http://eurystheus:8080"}
+  # Optional: a target behind mTLS, with the cert-manager Secret mounted at
+  # /etc/herakles/tls (see deployment.yaml). Files are re-read every cycle,
+  # so short-lived certs are picked up without a restart.
+  # - name: partner
+  #   vars:
+  #     base_url: {value: "https://partner.example.com"}
+  #   tls:
+  #     ca_file: /etc/herakles/tls/ca.crt
+  #     cert_file: /etc/herakles/tls/tls.crt
+  #     key_file: /etc/herakles/tls/tls.key
 
 labors:
   - name: login
