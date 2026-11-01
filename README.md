@@ -286,7 +286,8 @@ on 587, PostgreSQL) is checked at the TCP level only.
 ## Command line
 
 Every [release](https://github.com/raulnid/herakles/releases) ships static
-binaries for Linux, macOS and Windows, with a `checksums.txt`.
+binaries for Linux, macOS and Windows, with a signed `checksums.txt`. See
+[Verifying releases](#verifying-releases).
 
 ```
 herakles run      -config FILE [-once [-report FILE]] [-target NAME] [-log-level LEVEL]
@@ -466,6 +467,45 @@ everything that comes back from the probed services as untrusted.
 - **Bounded work.** Every step has a timeout. Response bodies are streamed, and only 1 MiB (for JSONPath) or 200 bytes (for error messages) is kept. A panicking module fails its step, not the process.
 - **The container**, as shipped in the example manifests: static binary on distroless, non-root, read-only root filesystem, no capabilities, no service account token.
 
+## Verifying releases
+
+Release images and checksums are signed in CI with
+[cosign](https://github.com/sigstore/cosign) keyless signing: the certificate
+says which workflow, on which tag, of this repository signed them, and the
+signature is logged in the public Rekor transparency log. There is no key to
+leak. Pre-releases (`v0.3.0-rc.1`) are signed the same way, so these commands
+work for them too: change the version.
+
+The image is signed by digest. Verifying a tag resolves it to its digest:
+
+```sh
+cosign verify ghcr.io/raulnid/herakles:0.3.0 \
+  --certificate-identity-regexp '^https://github\.com/raulnid/herakles/\.github/workflows/ci\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+The signed index also covers the SBOM and the SLSA provenance that buildx
+attaches to it:
+
+```sh
+docker buildx imagetools inspect ghcr.io/raulnid/herakles:0.3.0 --format '{{ json .SBOM }}'
+docker buildx imagetools inspect ghcr.io/raulnid/herakles:0.3.0 --format '{{ json .Provenance }}'
+```
+
+For the binaries, download `checksums.txt`, `checksums.txt.sigstore.json` and
+your archive from the release, verify the checksums file, then the archive
+against it:
+
+```sh
+cosign verify-blob checksums.txt \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity-regexp '^https://github\.com/raulnid/herakles/\.github/workflows/ci\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+sha256sum --check --ignore-missing checksums.txt
+```
+
+Releases up to v0.2.0 predate signing.
+
 ## Tracing
 
 Every request carries a [W3C `traceparent`](https://www.w3.org/TR/trace-context/)
@@ -584,7 +624,11 @@ schema/               JSON Schema of the config
 ```sh
 go vet ./... && go test -race ./...
 go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run
+go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 ```
+
+CI pins every action to a commit SHA (Dependabot keeps them current) and
+builds with the latest patch release of Go.
 
 The tests run every module against fake servers (`httptest`) and include
 failure cases:
