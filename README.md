@@ -619,6 +619,10 @@ schema/               JSON Schema of the config
 - **No leftover sweep.** If the process is killed hard (SIGKILL, node loss) between creating and deleting a resource, the resource stays. There are no loops or filters in the YAML yet to sweep `synthetic-*` leftovers.
 - **Payload uploads use chunked encoding.** Servers that require a `Content-Length` on uploads are not supported yet.
 - **Probes from inside the cluster.** herakles probes your services from inside the cluster. It does not cover the client's network path: their DNS, proxies or certificates.
+- **A failed cycle is not a failed labor run.** When variables or TLS files cannot be loaded, no labor runs, so `labor_runs_total` and the SLO ratio do not see it. `herakles_cycle_success` and the `HeraklesCycleFailing` alert do.
+- **Burn-rate alerts on few samples.** A probe runs one request per step per cycle. With `interval: 30s` a 5m window holds about 10 runs, so the short windows react to single failures and the long windows decide.
+- **No STARTTLS.** The `tcp` module does TLS from the first byte. Services that upgrade a plain connection (SMTP on 587, PostgreSQL) are checked at the TCP level only.
+- **Certificate expiry is what the step saw.** It covers the chain the server sends, not certificates on other endpoints, nodes behind a load balancer or a CDN the step did not reach.
 - **Redaction works on text.** A secret shorter than 4 bytes is not masked (a warning is logged). A secret transformed by the server in other ways, such as base64 or partially, cannot be recognized.
 
 ## Development
