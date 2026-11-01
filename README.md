@@ -424,8 +424,10 @@ quantile_over_time(0.95, herakles_http_phase_seconds{phase="wait"}[1h])
 ```
 
 Example alerts (failing labor, stale labor, failing cycle, slow step, slow
-transfer, certificate expiring) are in
+transfer, certificate expiring, error budget burn) are in
 [`examples/kubernetes/monitoring/prometheusrule.yaml`](examples/kubernetes/monitoring/prometheusrule.yaml).
+A Grafana dashboard for these series is in
+[`examples/kubernetes/monitoring/dashboard.json`](examples/kubernetes/monitoring/dashboard.json).
 
 ### Health
 

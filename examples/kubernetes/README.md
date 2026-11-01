@@ -52,8 +52,15 @@ installed, add the label your Prometheus selects on and apply the
 ServiceMonitor and the example alerts:
 
 ```sh
-kubectl apply -f examples/kubernetes/monitoring/
+kubectl apply -f examples/kubernetes/monitoring/servicemonitor.yaml -f examples/kubernetes/monitoring/prometheusrule.yaml
 ```
+
+The Grafana dashboard (`monitoring/dashboard.json`) ships with the
+kustomization as the `herakles-dashboard` ConfigMap, labeled
+`grafana_dashboard: "1"` for the Grafana sidecar. The sidecar must search the
+`herakles-demo` namespace: in kube-prometheus-stack, set
+`grafana.sidecar.dashboards.searchNamespace: ALL`. Without a sidecar, import
+the JSON in Grafana and pick your Prometheus data source.
 
 ## What the manifests do
 
@@ -64,4 +71,4 @@ kubectl apply -f examples/kubernetes/monitoring/
 | `deployment.yaml` | One replica with `Recreate`: two instances would run mutating steps concurrently. Non-root, read-only root filesystem, no capabilities, no service account token. |
 | `service.yaml` | Exposes `:9090` for scraping. |
 | `eurystheus.yaml` | The demo API, from the locally built image. Replace it with your own service. |
-| `monitoring/` | ServiceMonitor and PrometheusRule (needs the operator CRDs). |
+| `monitoring/` | ServiceMonitor and PrometheusRule (need the operator CRDs), and the Grafana dashboard. |

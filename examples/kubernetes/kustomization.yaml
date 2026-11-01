@@ -13,6 +13,15 @@ configMapGenerator:
   - name: herakles-config
     files:
       - herakles.yaml
+  # Picked up by the Grafana dashboard sidecar (kube-prometheus-stack), which
+  # must watch this namespace or all of them. A stable name, so re-imports
+  # update the dashboard instead of adding one.
+  - name: herakles-dashboard
+    files:
+      - monitoring/dashboard.json
+    options:
+      labels: {grafana_dashboard: "1"}
+      disableNameSuffixHash: true
 images:
   - name: ghcr.io/raulnid/herakles
     newTag: 0.2.0
