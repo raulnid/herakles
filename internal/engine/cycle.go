@@ -144,53 +144,86 @@ func (r *run) step(ctx context.Context, l *config.Labor, s *config.Step, n, tota
 		return skip("shutting down")
 	}
 
-	rendered, err := tmpl.Render(&s.Config, map[string]any{"vars": r.vars.Data(), "target": r.target.Name, "cycle": r.cycle})
-	if undef := (*tmpl.UndefinedError)(nil); errors.As(err, &undef) && (lenient || r.unavailable[undef.Name]) {
-		return skip(fmt.Sprintf("needs %q, which was not set", undef.Name))
-	}
-	if err != nil {
-		return end(Failed, r.vars.Redact(err.Error()))
-	}
-	cfg := m.NewConfig()
-	// Unknown fields were rejected by Validate at startup; skip the strict round-trip here.
-	if err := rendered.Decode(cfg); err != nil {
-		return end(Failed, r.vars.Redact("config: "+err.Error()))
+	data := map[string]any{"vars": r.vars.Data(), "target": r.target.Name, "cycle": r.cycle}
+	items := []any{nil}
+	if s.Foreach != "" {
+		v, ok := r.vars.Get(s.Foreach)
+		if !ok && (lenient || r.unavailable[s.Foreach]) {
+			return skip(fmt.Sprintf("needs %q, which was not set", s.Foreach))
+		}
+		if items, ok = v.Raw.([]any); !ok {
+			return end(Failed, fmt.Sprintf("foreach: variable %q is not a list", s.Foreach))
+		}
 	}
 
-	timeout := r.e.cfg.StepTimeout
-	if tr, ok := m.(module.BulkTransfer); ok && tr.IsTransfer(cfg) {
-		timeout = r.e.cfg.TransferTimeout
+	// Each item is a full attempt with its own timeout; the first failure
+	// ends the step. Phases and transfers are those of the last item.
+	var t0 time.Time
+	for i, item := range items {
+		where := ""
+		if s.Foreach != "" {
+			data["item"] = item
+			where = fmt.Sprintf("item %d of %d: ", i+1, len(items))
+		}
+		rendered, err := tmpl.Render(&s.Config, data)
+		if undef := (*tmpl.UndefinedError)(nil); errors.As(err, &undef) && (lenient || r.unavailable[undef.Name]) {
+			return skip(fmt.Sprintf("needs %q, which was not set", undef.Name))
+		}
+		if err != nil {
+			return end(Failed, r.vars.Redact(where+err.Error()))
+		}
+		cfg := m.NewConfig()
+		// Unknown fields were rejected by Validate at startup; skip the strict round-trip here.
+		if err := rendered.Decode(cfg); err != nil {
+			return end(Failed, r.vars.Redact(where+"config: "+err.Error()))
+		}
+
+		timeout := r.e.cfg.StepTimeout
+		if tr, ok := m.(module.BulkTransfer); ok && tr.IsTransfer(cfg) {
+			timeout = r.e.cfg.TransferTimeout
+		}
+		if i == 0 {
+			r.e.obs.StepStart(rep)
+			t0 = time.Now()
+		}
+		res, sctxErr := r.attempt(ctx, m, cfg, timeout)
+		rep.Duration, rep.Phases, rep.Transfers, rep.Cert = time.Since(t0), res.Phases, res.Transfers, res.Cert
+
+		switch {
+		case res.Err == nil:
+			for name, v := range res.Captured {
+				r.vars.Set(name, v)
+				delete(r.unavailable, name)
+				if !slices.Contains(rep.Captured, name) {
+					rep.Captured = append(rep.Captured, name)
+				}
+			}
+			continue
+		case ctx.Err() != nil:
+			// Interrupted by shutdown, not a real failure of the target.
+			return skip("shutting down")
+		case errors.Is(sctxErr, context.DeadlineExceeded):
+			return end(Failed, r.vars.Redact(fmt.Sprintf("%stimeout after %s: %v", where, timeout, res.Err)))
+		default:
+			return end(Failed, r.vars.Redact(where+res.Err.Error()))
+		}
 	}
+	slices.Sort(rep.Captured)
+	return end(OK, "")
+}
+
+// attempt runs the module once under the step timeout and returns the
+// timeout context's error, to tell a timeout from other failures.
+func (r *run) attempt(ctx context.Context, m module.Module, cfg any, timeout time.Duration) (module.Result, error) {
 	sctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-
-	r.e.obs.StepStart(rep)
-	t0 := time.Now()
 	env := &module.Env{
 		Target: r.target.Name, Vars: r.vars, HTTPClient: r.client, UserAgent: r.e.cfg.UserAgent,
 		TLSConfig:   r.client.Transport.(*http.Transport).TLSClientConfig,
 		TraceParent: "00-" + r.traceID + "-" + randomHex(8) + "-01", // sampled: probe traffic is worth keeping
 	}
 	res := safeRun(sctx, m, cfg, env)
-	rep.Duration, rep.Phases, rep.Transfers, rep.Cert = time.Since(t0), res.Phases, res.Transfers, res.Cert
-
-	switch {
-	case res.Err == nil:
-		for name, v := range res.Captured {
-			r.vars.Set(name, v)
-			delete(r.unavailable, name)
-			rep.Captured = append(rep.Captured, name)
-		}
-		slices.Sort(rep.Captured)
-		return end(OK, "")
-	case ctx.Err() != nil:
-		// Interrupted by shutdown, not a real failure of the target.
-		return skip("shutting down")
-	case errors.Is(sctx.Err(), context.DeadlineExceeded):
-		return end(Failed, r.vars.Redact(fmt.Sprintf("timeout after %s: %v", timeout, res.Err)))
-	default:
-		return end(Failed, r.vars.Redact(res.Err.Error()))
-	}
+	return res, sctx.Err()
 }
 
 func (r *run) markUnavailable(m module.Module, s *config.Step) {

@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -548,5 +549,31 @@ func TestTraceParentHeader(t *testing.T) {
 	}
 	if h := <-got; h != own {
 		t.Errorf("a traceparent set in headers must win, got %q", h)
+	}
+}
+
+func TestCaptureAll(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `[{"id":"1","name":"synthetic-a"},{"id":"2","name":"prod-data"},{"id":"3","name":"synthetic-b"}]`)
+	}))
+	defer srv.Close()
+
+	res := run(t, nil, config(t, `
+url: `+srv.URL+`
+capture:
+  leftovers: {jsonpath: "$[?(@.name =~ /^synthetic-/)].id", all: true}
+  none: {jsonpath: "$[?(@.name == 'x')].id", all: true}
+`))
+	if res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	if got := res.Captured["leftovers"].Raw; !reflect.DeepEqual(got, []any{"1", "3"}) {
+		t.Errorf("leftovers = %#v", got)
+	}
+	if got := res.Captured["none"].Raw; !reflect.DeepEqual(got, []any{}) {
+		t.Errorf("no match = %#v, want an empty list", got)
+	}
+	if err := (Module{}).Validate(config(t, "capture: {a: {header: X, all: true}}")); err == nil || !strings.Contains(err.Error(), "all needs jsonpath") {
+		t.Errorf("Validate = %v", err)
 	}
 }

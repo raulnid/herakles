@@ -93,6 +93,7 @@
         "description": { "type": "string", "description": "What the step does, shown in the log when it starts." },
         "optional": { "type": "boolean", "description": "A failure is recorded but the labor goes on." },
         "mutating": { "type": "boolean", "description": "The step writes; it is skipped on safe targets." },
+        "foreach": { "$ref": "#/$defs/ident", "description": "A list variable, e.g. a capture with all: true. The step runs once per item, read as {{ .item }}." },
         "http": { "$ref": "#/$defs/http" },
         "tcp": { "$ref": "#/$defs/tcp" }
       },
@@ -183,9 +184,11 @@
         "jsonpath": { "type": "string", "examples": ["$.token", "$.items[0].id"] },
         "header": { "type": "string" },
         "status": { "const": true },
+        "all": { "type": "boolean", "description": "Every jsonpath match as a list, empty when nothing matches. For foreach." },
         "secret": { "type": "boolean", "description": "Mask the captured value in logs and errors." }
       },
-      "oneOf": [{ "required": ["jsonpath"] }, { "required": ["header"] }, { "required": ["status"] }]
+      "oneOf": [{ "required": ["jsonpath"] }, { "required": ["header"] }, { "required": ["status"] }],
+      "dependentRequired": { "all": ["jsonpath"] }
     },
     "assert": {
       "type": "object",

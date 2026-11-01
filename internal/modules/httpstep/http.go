@@ -38,6 +38,7 @@ type Capture struct {
 	JSONPath string `yaml:"jsonpath"`
 	Header   string `yaml:"header"`
 	Status   bool   `yaml:"status"`
+	All      bool   `yaml:"all"` // jsonpath: every match as a list, maybe empty, for foreach
 	Secret   bool   `yaml:"secret"`
 }
 
@@ -99,6 +100,9 @@ func (Module) Validate(cfg any) error {
 		}
 		if n != 1 {
 			errs = append(errs, fmt.Errorf("capture %q: exactly one of jsonpath, header or status is required", name))
+		}
+		if cp.All && cp.JSONPath == "" {
+			errs = append(errs, fmt.Errorf("capture %q: all needs jsonpath", name))
 		}
 		if cp.JSONPath != "" && !module.Templated(cp.JSONPath) {
 			if _, err := compile(cp.JSONPath); err != nil {
@@ -283,6 +287,12 @@ func (c *Config) check(resp *http.Response, rb *respBody) (map[string]vars.Value
 			if raw = resp.Header.Get(cp.Header); raw == "" {
 				return nil, fmt.Errorf("capture %q: header %s not in response", name, cp.Header)
 			}
+		case cp.All:
+			x, err := compile(cp.JSONPath)
+			if err != nil {
+				return nil, fmt.Errorf("capture %q: jsonpath %s: %w", name, cp.JSONPath, err)
+			}
+			raw = append([]any{}, x.Get(doc)...) // never nil: no match is an empty list
 		default:
 			v, err := first(doc, cp.JSONPath)
 			if err != nil {

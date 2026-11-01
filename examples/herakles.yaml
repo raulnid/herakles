@@ -69,10 +69,22 @@ labors:
   - name: projects
     steps:
       - name: list
-        description: List projects with the session
+        description: List projects with the session, and those an interrupted cycle left behind
         http:
           url: "{{ .vars.base_url }}/projects"
           headers: {Authorization: "Bearer {{ .vars.token }}"}
+          capture:
+            leftovers: {jsonpath: "$[?(@.name =~ /^synthetic-/)].id", all: true}
+      - name: sweep
+        description: Delete leftovers of earlier cycles, so a kill mid-cycle leaves no garbage for long
+        mutating: true
+        optional: true
+        foreach: leftovers
+        http:
+          method: DELETE
+          url: "{{ .vars.base_url }}/projects/{{ .item | pathescape }}"
+          headers: {Authorization: "Bearer {{ .vars.token }}"}
+          assert: {status: [204, 404]}
       - name: upload
         description: Upload a 5 MiB zip of random content
         mutating: true

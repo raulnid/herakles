@@ -47,6 +47,9 @@ func Validate(cfg *config.Config) error {
 		}
 		check := func(l *config.Labor, s *config.Step, lenient bool) {
 			refs, _ := tmpl.NodeRefs(&s.Config) // syntax errors are reported by checkStep
+			if s.Foreach != "" && !slices.Contains(refs, s.Foreach) {
+				refs = append(refs, s.Foreach)
+			}
 			for _, r := range refs {
 				if defined[r] || (lenient && all[r]) {
 					continue
@@ -102,6 +105,9 @@ func checkStep(s config.Step) ([]string, error) {
 	}
 	if _, err := tmpl.NodeRefs(&s.Config); err != nil {
 		return nil, fmt.Errorf("template: %w", err)
+	}
+	if s.Foreach == "" && tmpl.NodeUses(&s.Config, "item") {
+		return nil, errors.New("reads .item but has no foreach")
 	}
 	cfg := m.NewConfig()
 	if err := module.DecodeStatic(&s.Config, cfg); err != nil {

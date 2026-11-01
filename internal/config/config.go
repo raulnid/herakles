@@ -67,6 +67,7 @@ type Step struct {
 	Description string // what the step does, shown when it starts
 	Optional    bool
 	Mutating    bool
+	Foreach     string // a list variable: the step runs once per item, seen as .item
 	Module      string
 	Config      yaml.Node
 }
@@ -87,6 +88,8 @@ func (s *Step) UnmarshalYAML(n *yaml.Node) error {
 			err = v.Decode(&s.Optional)
 		case "mutating":
 			err = v.Decode(&s.Mutating)
+		case "foreach":
+			err = v.Decode(&s.Foreach)
 		default:
 			if s.Module != "" {
 				return fmt.Errorf("line %d: step has more than one module key (%q and %q)", k.Line, s.Module, k.Value)

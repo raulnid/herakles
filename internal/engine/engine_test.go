@@ -596,3 +596,50 @@ labors:
 		t.Errorf("report trace id %q, want %q", s.TraceID, traces[0])
 	}
 }
+
+func TestForeach(t *testing.T) {
+	e, rec := setup(t, `
+vars:
+  ids: {value: [a, b, c]}
+  none: {value: []}
+  one: {value: x}
+targets: [{name: dev}]
+labors:
+  - name: l
+    steps:
+      - {name: each, fake: {echo: "del {{ .item }}"}, foreach: ids}
+      - {name: stop, optional: true, foreach: ids, fake: {fail: "{{ if eq .item \"b\" }}gone{{ end }}", echo: "{{ .item }}"}}
+      - {name: empty, foreach: none, fake: {echo: "{{ .item }}"}}
+      - {name: scalar, optional: true, foreach: one, fake: {echo: "{{ .item }}"}}
+`)
+	e.Once(context.Background())
+	if got := ranSteps(); !slices.Equal(got, []string{"del a", "del b", "del c", "a", "b"}) {
+		t.Errorf("ran %v", got)
+	}
+	if s := rec.step("dev", "l", "each"); s.Status != OK {
+		t.Errorf("each: %+v", s)
+	}
+	if s := rec.step("dev", "l", "stop"); s.Status != Failed || s.Reason != "item 2 of 3: gone" {
+		t.Errorf("stop: %+v", s)
+	}
+	if s := rec.step("dev", "l", "empty"); s.Status != OK {
+		t.Errorf("empty list: %+v", s)
+	}
+	if s := rec.step("dev", "l", "scalar"); s.Status != Failed || !strings.Contains(s.Reason, `"one" is not a list`) {
+		t.Errorf("scalar: %+v", s)
+	}
+}
+
+func TestForeachInFinallySkipsWhenListNotSet(t *testing.T) {
+	e, rec := setup(t, `
+targets: [{name: dev}]
+labors:
+  - name: l
+    steps: [{name: list, fake: {fail: down, set: {ids: x}}}]
+    finally: [{name: sweep, foreach: ids, fake: {echo: "{{ .item }}"}}]
+`)
+	e.Once(context.Background())
+	if s := rec.step("dev", "l", "sweep"); s.Status != Skipped {
+		t.Errorf("sweep: %+v", s)
+	}
+}

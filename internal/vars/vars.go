@@ -37,7 +37,17 @@ func (v *Vars) Set(name string, val Value) {
 	if !val.Secret {
 		return
 	}
-	s := fmt.Sprint(val.Raw)
+	// A list, as foreach reads it, is masked item by item.
+	items, ok := val.Raw.([]any)
+	if !ok {
+		items = []any{val.Raw}
+	}
+	for _, it := range items {
+		v.addSecret(name, fmt.Sprint(it))
+	}
+}
+
+func (v *Vars) addSecret(name, s string) {
 	if len(s) < minSecretLen {
 		slog.Warn("secret too short to be redacted from logs", "var", name)
 		return

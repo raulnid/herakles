@@ -127,6 +127,7 @@ in every field of a step config:
 | `{{ .vars.upload.sha256 }}` | A field of a structured variable, such as a payload. |
 | `{{ .target }}` | The target name. |
 | `{{ .cycle.id }}` | A random id per cycle, for unique resource names. |
+| `{{ .item }}` | The current item, in a step with [`foreach`](#sweeping-leftovers-with-foreach). |
 | `{{ .vars.id \| pathescape }}` | The value escaped for a URL path segment. |
 | `{{ .vars.q \| urlquery }}` | The value escaped for a query string. |
 | `{{ .vars.id \| sha256 }}`, `sha512` | The hex digest of the value, for APIs keyed by a hash. |
@@ -191,6 +192,35 @@ labors:
     steps: [...]
 ```
 
+#### Sweeping leftovers with `foreach`
+
+A process killed hard (SIGKILL, node loss) between creating and deleting a
+resource leaves it behind, and `finally` never runs. Sweep at the start of the
+next cycle instead: capture every match of a JSONPath as a list with
+`all: true`, then run a step once per item with `foreach`. The item is
+`{{ .item }}` (or `{{ .item.id }}` when items are objects).
+
+```yaml
+      - name: list
+        http:
+          url: "{{ .vars.base_url }}/projects"
+          capture:
+            leftovers: {jsonpath: "$[?(@.name =~ /^synthetic-/)].id", all: true}
+      - name: sweep
+        mutating: true
+        optional: true                  # a failed sweep is a warning, not an outage
+        foreach: leftovers
+        http:
+          method: DELETE
+          url: "{{ .vars.base_url }}/projects/{{ .item | pathescape }}"
+          assert: {status: [204, 404]}  # 404: already gone
+```
+
+- The step reports one result: ok when every item passes, including when the list is empty. The first failing item stops it, and the error names it (`item 3 of 7: ...`).
+- Each item gets its own `step_timeout`. Phases and transfer rates are those of the last item.
+- `validate` checks that the list variable exists and that `.item` is only read inside `foreach`.
+- Pick a name pattern that only the probe uses. herakles runs one replica, so nothing it did not create matches `synthetic-*` unless you share the prefix.
+
 ### The `http` module
 
 ```yaml
@@ -208,6 +238,7 @@ http:
       notes: {value: "hello", filename: notes.txt, content_type: text/plain}
   capture:                              # set variables from the response
     token:   {jsonpath: $.token, secret: true}
+    ids:     {jsonpath: "$[*].id", all: true}  # every match, as a list for foreach
     etag:    {header: ETag}
     code:    {status: true}
   assert:
@@ -227,7 +258,7 @@ http:
       404: {jsonpath: {$.message: "Patient not found"}}
   ```
   Each code must be one the step accepts. `on_status` only holds `jsonpath` for now.
-- **JSONPath** uses the full [JSONPath](https://goessner.net/articles/JsonPath/) syntax via [ojg](https://github.com/ohler55/ojg). A capture takes the first match. Responses used by `jsonpath` are parsed up to 1 MiB.
+- **JSONPath** uses the full [JSONPath](https://goessner.net/articles/JsonPath/) syntax via [ojg](https://github.com/ohler55/ojg). A capture takes the first match, or every match as a list with `all: true`. Responses used by `jsonpath` are parsed up to 1 MiB.
 - **Downloads** are streamed: the body is hashed and counted as it arrives and never kept whole in memory. The hash is computed only when `sha256` or `sha256_header` is set. See [Verifying downloads](#verifying-downloads).
 - **Error messages** include at most the first 200 bytes of the response body, with every secret masked.
 - **Redirects** are followed, up to 10. On a redirect to another host, every header that carries a secret is dropped, not just `Authorization` and `Cookie` as Go does by default. A presigned storage URL gets the request; your API key does not.
@@ -660,7 +691,8 @@ schema/               JSON Schema of the config
 ## Known limits
 
 - **No load testing.** Each labor runs once per cycle. Concurrency per labor is planned, with an isolated variable map for each copy.
-- **No leftover sweep.** If the process is killed hard (SIGKILL, node loss) between creating and deleting a resource, the resource stays. There are no loops or filters in the YAML yet to sweep `synthetic-*` leftovers.
+- **Leftovers last one cycle.** A hard kill between creating and deleting a resource leaves it until the next cycle's [sweep](#sweeping-leftovers-with-foreach) deletes it, if you configure one.
+- **`foreach` runs items in sequence and stops at the first failure.** There are no other loops, conditions or filters in the YAML; filter in the JSONPath.
 - **Payload uploads use chunked encoding.** Servers that require a `Content-Length` on uploads are not supported yet.
 - **Probes from inside the cluster.** herakles probes your services from inside the cluster. It does not cover the client's network path: their DNS, proxies or certificates.
 - **A failed cycle is not a failed labor run.** When variables or TLS files cannot be loaded, no labor runs, so `labor_runs_total` and the SLO ratio do not see it. `herakles_cycle_success` and the `HeraklesCycleFailing` alert do.

@@ -57,12 +57,31 @@ func Refs(src string) ([]string, error) {
 func refsOf(t *template.Template) []string {
 	var out []string
 	seen := map[string]bool{}
-	add := func(ident []string) {
+	fields(t, func(ident []string) {
 		if len(ident) >= 2 && ident[0] == "vars" && !seen[ident[1]] {
 			seen[ident[1]] = true
 			out = append(out, ident[1])
 		}
-	}
+	})
+	return out
+}
+
+// NodeUses reports whether a template under n reads the top-level field
+// root, such as .item.
+func NodeUses(n *yaml.Node, root string) bool {
+	found := false
+	_ = eachTemplate(n, func(s *yaml.Node) error {
+		if t, err := parseTemplate(s.Value); err == nil {
+			fields(t, func(ident []string) { found = found || ident[0] == root })
+		}
+		return nil
+	})
+	return found
+}
+
+// fields calls add with the identifiers of every field a template reads from
+// the root data, as .a.b or $.a.b.
+func fields(t *template.Template, add func(ident []string)) {
 	var walk func(parse.Node)
 	walk = func(n parse.Node) {
 		switch n := n.(type) {
@@ -87,7 +106,7 @@ func refsOf(t *template.Template) []string {
 		case *parse.FieldNode:
 			add(n.Ident)
 		case *parse.VariableNode:
-			if len(n.Ident) > 0 && n.Ident[0] == "$" {
+			if len(n.Ident) > 1 && n.Ident[0] == "$" {
 				add(n.Ident[1:])
 			}
 		case *parse.ChainNode:
@@ -103,7 +122,6 @@ func refsOf(t *template.Template) []string {
 	if t.Tree != nil { //nolint:staticcheck // nil check needs the field
 		walk(t.Root)
 	}
-	return out
 }
 
 func walkBranch(b *parse.BranchNode, walk func(parse.Node)) {

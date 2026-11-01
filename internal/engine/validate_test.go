@@ -32,6 +32,14 @@ labors:
 targets: [{name: dev}]
 labors: [{name: l, steps: [{name: s, fake: {echo: "{{ .vars.ghost }}"}}]}]
 `, `labor "l" step "s": variable "ghost" is not declared`},
+		"foreach undefined": {`
+targets: [{name: dev}]
+labors: [{name: l, steps: [{name: s, foreach: ids, fake: {echo: "{{ .item }}"}}]}]
+`, `labor "l" step "s": variable "ids" is not declared`},
+		"item without foreach": {`
+targets: [{name: dev}]
+labors: [{name: l, steps: [{name: s, fake: {echo: "{{ .item.id }}"}}]}]
+`, `step "s": reads .item but has no foreach`},
 		"used before set": {`
 targets: [{name: dev}]
 labors:

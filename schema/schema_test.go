@@ -96,6 +96,8 @@ func TestSchemaRejects(t *testing.T) {
 		"cert without key":   strings.Replace(strings.Replace(base, "STEP", "{name: s, http: {}}", 1), "{name: dev}", "{name: dev, tls: {cert_file: c.pem}}", 1),
 		"on_status bad code": strings.Replace(base, "STEP", "{name: s, http: {assert: {on_status: {abc: {jsonpath: {$.a: 1}}}}}}", 1),
 		"on_status size":     strings.Replace(base, "STEP", "{name: s, http: {assert: {on_status: {404: {size: 1}}}}}", 1),
+		"foreach bad name":   strings.Replace(base, "STEP", "{name: s, foreach: \"a b\", http: {}}", 1),
+		"all without path":   strings.Replace(base, "STEP", "{name: s, http: {capture: {a: {header: X, all: true}}}}", 1),
 		"key without cert":   strings.Replace(strings.Replace(base, "STEP", "{name: s, http: {}}", 1), "{name: dev}", "{name: dev, tls: {key_file: k.pem}}", 1),
 	}
 	for name, src := range cases {
@@ -108,6 +110,9 @@ func TestSchemaRejects(t *testing.T) {
 	}
 	if err := validate(s, []byte(strings.Replace(base, "STEP", "{name: s, http: {assert: {status: [200, 404], on_status: {404: {jsonpath: {$.m: x}}}}}}", 1))); err != nil {
 		t.Errorf("on_status rejected: %v", err)
+	}
+	if err := validate(s, []byte(strings.Replace(base, "STEP", "{name: s, foreach: ids, http: {url: \"{{ .item }}\", capture: {ids: {jsonpath: $.a, all: true}}}}", 1))); err != nil {
+		t.Errorf("foreach rejected: %v", err)
 	}
 	mtls := strings.Replace(strings.Replace(base, "STEP", "{name: s, http: {}}", 1), "{name: dev}", "{name: dev, tls: {ca_file: ca.pem, cert_file: c.pem, key_file: k.pem}}", 1)
 	if err := validate(s, []byte(mtls)); err != nil {

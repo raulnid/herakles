@@ -102,3 +102,11 @@ func TestResolveErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestSecretListMaskedPerItem(t *testing.T) {
+	v := New()
+	v.Set("ids", Value{Raw: []any{"alpha-1", "beta-22"}, Secret: true})
+	if got := v.Redact("delete beta-22 then alpha-1"); got != "delete *** then ***" {
+		t.Errorf("Redact = %q", got)
+	}
+}
