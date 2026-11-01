@@ -48,13 +48,18 @@ spec:
           labels: {severity: warning}
           annotations:
             summary: "{{ $labels.direction }} on {{ $labels.target }} below 1 MB/s for 15 minutes"
-        - alert: HeraklesCertExpiringSoon
-          # Earliest NotAfter in the chain the step saw, intermediates included.
-          expr: herakles_tls_cert_expiry_timestamp_seconds - time() < 7 * 86400
-          for: 1h
+        - alert: HeraklesCertNotRenewed
+          # Less than a third of its lifetime left: the renewal, due at two
+          # thirds (cert-manager's default), did not happen. Relative to the
+          # lifetime, so one rule fits 24-hour and 90-day certificates alike.
+          # The certificate is the first to expire in the chain the step saw.
+          expr: |
+            herakles_tls_cert_expiry_timestamp_seconds - time()
+              < (herakles_tls_cert_expiry_timestamp_seconds - herakles_tls_cert_not_before_timestamp_seconds) / 3
+          for: 10m
           labels: {severity: warning}
           annotations:
-            summary: "A certificate served to {{ $labels.labor }}/{{ $labels.step }} on {{ $labels.target }} expires in {{ $value | humanizeDuration }}"
+            summary: "A certificate served to {{ $labels.labor }}/{{ $labels.step }} on {{ $labels.target }} was not renewed: it expires in {{ $value | humanizeDuration }}"
 
     # SLO on the user journey: 99.9% of labor runs pass over 30 days.
     # Multiwindow burn rate (Google SRE workbook): 14.4x over 1h/5m pages for

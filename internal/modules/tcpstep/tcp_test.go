@@ -50,8 +50,8 @@ func TestConnect(t *testing.T) {
 			t.Errorf("phase %s missing: %v", p, res.Phases)
 		}
 	}
-	if _, ok := res.Phases["tls"]; ok || !res.CertExpiry.IsZero() {
-		t.Errorf("plain TCP must not report TLS: %v %v", res.Phases, res.CertExpiry)
+	if _, ok := res.Phases["tls"]; ok || res.Cert != nil {
+		t.Errorf("plain TCP must not report TLS: %v %v", res.Phases, res.Cert)
 	}
 }
 
@@ -90,8 +90,8 @@ func TestTLS(t *testing.T) {
 	if res.Err != nil {
 		t.Fatal(res.Err)
 	}
-	if res.Phases["tls"] <= 0 || !res.CertExpiry.Equal(srv.TLS.Leaf.NotAfter) {
-		t.Errorf("phases %v, CertExpiry %v, want %v", res.Phases, res.CertExpiry, srv.TLS.Leaf.NotAfter)
+	if res.Phases["tls"] <= 0 || res.Cert == nil || !res.Cert.Equal(srv.TLS.Leaf) {
+		t.Errorf("phases %v, Cert %v, want the server leaf", res.Phases, res.Cert)
 	}
 	if target.ServerName != "" {
 		t.Error("the shared target config was modified")

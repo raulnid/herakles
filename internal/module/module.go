@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -65,25 +66,25 @@ type Result struct {
 	// Phases of the last network request, e.g. dns, connect, tls, wait, transfer, total.
 	Phases    map[string]time.Duration
 	Transfers []Transfer
-	// CertExpiry is the earliest NotAfter of the server's certificate chain,
-	// zero when the step did not talk TLS. See CertExpiry.
-	CertExpiry time.Time
+	// Cert is the certificate of the server's chain that expires first, nil
+	// when the step did not talk TLS. See FirstToExpire.
+	Cert *x509.Certificate
 }
 
-// CertExpiry returns the earliest NotAfter of the peer chain of a TLS
-// connection, or zero for nil. Connection state is kept on reused
+// FirstToExpire returns the certificate of the peer chain of a TLS connection
+// with the earliest NotAfter, or nil. Connection state is kept on reused
 // connections too, so it does not depend on a fresh handshake.
-func CertExpiry(cs *tls.ConnectionState) time.Time {
-	var t time.Time
+func FirstToExpire(cs *tls.ConnectionState) *x509.Certificate {
 	if cs == nil {
-		return t
+		return nil
 	}
+	var first *x509.Certificate
 	for _, c := range cs.PeerCertificates {
-		if t.IsZero() || c.NotAfter.Before(t) {
-			t = c.NotAfter
+		if first == nil || c.NotAfter.Before(first.NotAfter) {
+			first = c
 		}
 	}
-	return t
+	return first
 }
 
 type Transfer struct {

@@ -279,15 +279,15 @@ func TestCertExpiry(t *testing.T) {
 		if i == 1 && res.Phases["tls"] != 0 {
 			t.Fatalf("second request did not reuse the connection: %v", res.Phases)
 		}
-		if !res.CertExpiry.Equal(ca.Cert.NotAfter) {
-			t.Errorf("%s connection: CertExpiry = %v, want the CA's %v", name, res.CertExpiry, ca.Cert.NotAfter)
+		if res.Cert == nil || !res.Cert.Equal(ca.Cert) {
+			t.Errorf("%s connection: Cert = %v, want the CA, which expires first", name, res.Cert)
 		}
 	}
 
 	plain := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	defer plain.Close()
-	if res := run(t, nil, config(t, "url: "+plain.URL)); !res.CertExpiry.IsZero() {
-		t.Errorf("plain HTTP: CertExpiry = %v, want zero", res.CertExpiry)
+	if res := run(t, nil, config(t, "url: "+plain.URL)); res.Cert != nil {
+		t.Errorf("plain HTTP: Cert = %v, want nil", res.Cert)
 	}
 }
 

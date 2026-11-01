@@ -168,7 +168,7 @@ func (r *run) step(ctx context.Context, l *config.Labor, s *config.Step, n, tota
 		TraceParent: "00-" + r.traceID + "-" + randomHex(8) + "-01", // sampled: probe traffic is worth keeping
 	}
 	res := safeRun(sctx, m, cfg, env)
-	rep.Duration, rep.Phases, rep.Transfers, rep.CertExpiry = time.Since(t0), res.Phases, res.Transfers, res.CertExpiry
+	rep.Duration, rep.Phases, rep.Transfers, rep.Cert = time.Since(t0), res.Phases, res.Transfers, res.Cert
 
 	switch {
 	case res.Err == nil:

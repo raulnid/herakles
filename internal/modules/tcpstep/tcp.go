@@ -89,7 +89,7 @@ func (Module) Run(ctx context.Context, cfg any, env *module.Env) module.Result {
 			return fail(&res, start, err)
 		}
 		st := conn.ConnectionState()
-		res.CertExpiry = module.CertExpiry(&st)
+		res.Cert = module.FirstToExpire(&st)
 	}
 	res.Phases["total"] = time.Since(start)
 	return res

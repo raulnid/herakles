@@ -31,6 +31,7 @@ type Metrics struct {
 	transferRate     *prometheus.GaugeVec
 	cycleSuccess     *prometheus.GaugeVec
 	certExpiry       *prometheus.GaugeVec
+	certNotBefore    *prometheus.GaugeVec
 	stepRuns         *prometheus.CounterVec
 	laborRuns        *prometheus.CounterVec
 }
@@ -72,6 +73,7 @@ func New(reg prometheus.Registerer) *Metrics {
 		stepRuns:         counter("step_runs_total", "Step attempts by result: ok, failed or skipped.", step...),
 		laborRuns:        counter("labor_runs_total", "Labor runs by result: ok, failed or skipped.", labor...),
 		certExpiry:       gauge("tls_cert_expiry_timestamp_seconds", "Unix time of the earliest NotAfter in the server certificate chain seen by the step.", step...),
+		certNotBefore:    gauge("tls_cert_not_before_timestamp_seconds", "NotBefore of the same certificate: with the expiry, its lifetime.", step...),
 	}
 }
 
@@ -94,8 +96,9 @@ func (m *Metrics) StepEnd(r engine.StepReport) {
 	for _, t := range r.Transfers {
 		m.transferRate.WithLabelValues(r.Target, r.Labor, r.Step, t.Direction).Set(t.BytesPerSecond())
 	}
-	if !r.CertExpiry.IsZero() {
-		m.certExpiry.With(l).Set(float64(r.CertExpiry.Unix()))
+	if r.Cert != nil {
+		m.certExpiry.With(l).Set(float64(r.Cert.NotAfter.Unix()))
+		m.certNotBefore.With(l).Set(float64(r.Cert.NotBefore.Unix()))
 	}
 }
 

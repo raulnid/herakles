@@ -350,7 +350,8 @@ All metrics are prefixed `herakles_` and labeled `target`, plus `labor`,
 | `labor_failed_step` | gauge | target, labor, step | 1 on the required step that failed the last run, 0 on the others. |
 | `step_phase_seconds` | gauge | target, labor, step, phase | Phases of the last network request of the step. `http`: `dns`, `connect`, `tls`, `wait` (request sent to first byte), `transfer`, `total`; on a reused connection `dns`, `connect` and `tls` are 0. `tcp`: `dns`, `connect`, `tls`, `total`. Named `http_phase_seconds` before v0.3.0. |
 | `transfer_bytes_per_second` | gauge | target, labor, step, direction | Rate of the last `upload` or `download`. |
-| `tls_cert_expiry_timestamp_seconds` | gauge | target, labor, step | Earliest `NotAfter` in the server certificate chain, set by steps that got a TLS response, reused connections included. Days left: `(herakles_tls_cert_expiry_timestamp_seconds - time()) / 86400`. |
+| `tls_cert_expiry_timestamp_seconds` | gauge | target, labor, step | Earliest `NotAfter` in the server certificate chain, set by steps that got a TLS response, reused connections included. |
+| `tls_cert_not_before_timestamp_seconds` | gauge | target, labor, step | `NotBefore` of that same certificate. With the expiry it gives the lifetime, for alerts relative to it. |
 | `labor_runs_total` | counter | target, labor, result | Labor runs by `result`: `ok`, `failed` or `skipped`. The SLO metric. |
 | `step_runs_total` | counter | target, labor, step, result | Step attempts by `result`. For diagnosis: which step burns the budget. |
 | `build_info` | gauge | version, goversion | Always 1. Shows which herakles version runs where: `herakles_build_info{version!="0.2.0"}`. |
@@ -359,6 +360,23 @@ All metrics are prefixed `herakles_` and labeled `target`, plus `labor`,
 A skipped labor does not update its gauges. Its last success timestamp ages,
 which is exactly what a staleness alert should catch. It does count as
 `result="skipped"`.
+
+### Certificate expiry
+
+A fixed threshold such as "less than 7 days left" fires all the time with
+24-hour certificates and too late for some 1-year ones. What matters is
+whether renewal happened. cert-manager renews at two thirds of the lifetime by
+default, so less than a third left means it did not:
+
+```promql
+herakles_tls_cert_expiry_timestamp_seconds - time()
+  < (herakles_tls_cert_expiry_timestamp_seconds - herakles_tls_cert_not_before_timestamp_seconds) / 3
+```
+
+That is `HeraklesCertNotRenewed` in the example rules: 8 hours left for a
+24-hour certificate, 30 days for a 90-day one. If you renew on another
+schedule, change the `/ 3`. Every cycle opens new connections, so a renewed
+server certificate shows up in the next cycle.
 
 ### SLOs: counters next to gauges
 
@@ -424,7 +442,7 @@ quantile_over_time(0.95, herakles_step_phase_seconds{phase="wait"}[1h])
 ```
 
 Example alerts (failing labor, stale labor, failing cycle, slow step, slow
-transfer, certificate expiring, error budget burn) are in
+transfer, certificate not renewed, error budget burn) are in
 [`examples/kubernetes/monitoring/prometheusrule.yaml`](examples/kubernetes/monitoring/prometheusrule.yaml).
 A Grafana dashboard for these series is in
 [`examples/kubernetes/monitoring/dashboard.json`](examples/kubernetes/monitoring/dashboard.json).
@@ -571,7 +589,7 @@ It applies the timeout through `ctx`, measures the duration, and turns the
 | `Captured` | Variables for later steps (`vars.Value{Raw, Secret}`). |
 | `Phases` | `herakles_step_phase_seconds{phase=...}`. |
 | `Transfers` | `herakles_transfer_bytes_per_second{direction=...}`. |
-| `CertExpiry` | `herakles_tls_cert_expiry_timestamp_seconds`. Fill it with `module.CertExpiry(&connState)`. |
+| `Cert` | `herakles_tls_cert_expiry_timestamp_seconds` and `..._not_before_...`. Fill it with `module.FirstToExpire(&connState)`. |
 
 `Env` gives a module the target name, the variables (read-only), the cycle's
 HTTP client with keep-alive and cookies, its `TLSConfig` (the target's CA,

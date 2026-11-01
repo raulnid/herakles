@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"crypto/x509"
 	"time"
 
 	"github.com/raulnid/herakles/internal/module"
@@ -30,7 +31,7 @@ type StepReport struct {
 	Captured                         []string // variables the step set; names only, never values
 	Phases                           map[string]time.Duration
 	Transfers                        []module.Transfer
-	CertExpiry                       time.Time // earliest NotAfter of the server chain; zero without TLS
+	Cert                             *x509.Certificate // of the server chain, the first to expire; nil without TLS
 }
 
 type LaborReport struct {

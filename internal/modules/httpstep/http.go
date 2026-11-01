@@ -158,7 +158,7 @@ func (Module) Run(ctx context.Context, cfg any, env *module.Env) module.Result {
 	}
 	defer resp.Body.Close()
 	rb, readErr := readBody(resp.Body, c.needsJSON(), c.hashes())
-	res := module.Result{Phases: tr.phases(time.Now()), CertExpiry: module.CertExpiry(resp.TLS)}
+	res := module.Result{Phases: tr.phases(time.Now()), Cert: module.FirstToExpire(resp.TLS)}
 	if body.uploads {
 		n, firstRead := body.stats()
 		res.Transfers = append(res.Transfers, module.Transfer{Direction: "upload", Bytes: n, Duration: tr.uploadTime(firstRead)})
