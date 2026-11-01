@@ -2,6 +2,10 @@
 package tmpl
 
 import (
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/hex"
+	"fmt"
 	"net/url"
 	"slices"
 	"strings"
@@ -12,9 +16,14 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// funcs adds pathescape for values placed in a URL path; text/template has
-// urlquery built in for query strings.
-var funcs = template.FuncMap{"pathescape": url.PathEscape}
+// funcs adds pathescape for values placed in a URL path (text/template has
+// urlquery built in for query strings) and hex digests of a value, for APIs
+// keyed by a hash.
+var funcs = template.FuncMap{
+	"pathescape": url.PathEscape,
+	"sha256":     func(v any) string { h := sha256.Sum256([]byte(fmt.Sprint(v))); return hex.EncodeToString(h[:]) },
+	"sha512":     func(v any) string { h := sha512.Sum512([]byte(fmt.Sprint(v))); return hex.EncodeToString(h[:]) },
+}
 
 // parsed caches templates by source: configs never change at runtime, so
 // each template is parsed once. Parsed templates are safe for concurrent use.

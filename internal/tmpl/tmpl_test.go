@@ -152,3 +152,20 @@ func TestPathEscape(t *testing.T) {
 		t.Errorf("url = %s", got.URL)
 	}
 }
+
+func TestDigests(t *testing.T) {
+	out, err := Render(node(t, `url: "{{ .vars.n | sha256 }} {{ .vars.n | sha512 }}"`), data(map[string]any{"n": int64(42)}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got cfg
+	if err := out.Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	// Digests of the text "42", as sha256sum and sha512sum print them.
+	want := "73475cb40a568e8da8a045ced110137e159f890ac4da883b6b17dc651b3a8049 " +
+		"39ca7ce9ecc69f696bf7d20bb23dd1521b641f806cc7a6b724aaa6cdbffb3a023ff98ae73225156b2c6c9ceddbfc16f5453e8fa49fc10e5d96a3885546a46ef4"
+	if got.URL != want {
+		t.Errorf("url = %s", got.URL)
+	}
+}

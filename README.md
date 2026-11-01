@@ -129,6 +129,7 @@ in every field of a step config:
 | `{{ .cycle.id }}` | A random id per cycle, for unique resource names. |
 | `{{ .vars.id \| pathescape }}` | The value escaped for a URL path segment. |
 | `{{ .vars.q \| urlquery }}` | The value escaped for a query string. |
+| `{{ .vars.id \| sha256 }}`, `sha512` | The hex digest of the value, for APIs keyed by a hash. |
 
 Values captured from responses are inserted as they are. Escape them when they
 go into a URL, so an id like `a/b?x` cannot change the path or the query:
