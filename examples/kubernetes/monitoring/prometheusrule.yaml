@@ -17,8 +17,18 @@ spec:
           annotations:
             summary: "Labor {{ $labels.labor }} fails on {{ $labels.target }}"
             description: 'Failing step: check herakles_labor_failed_step{target="{{ $labels.target }}",labor="{{ $labels.labor }}"} == 1 and the herakles logs.'
+        - alert: HeraklesDown
+          # Watches the probe itself. When herakles is down its series go stale
+          # within 5 minutes and every rule below goes silent, Stale included.
+          # job is the Service name, the Prometheus Operator default.
+          expr: absent(up{job="herakles"} == 1)
+          for: 5m
+          labels: {severity: critical}
+          annotations:
+            summary: "herakles is down or not scraped: no probe is running"
         - alert: HeraklesLaborStale
-          # Also fires when the probe is down or an earlier labor keeps this one skipped.
+          # Fires when an earlier labor keeps this one skipped, or it passed long
+          # ago and keeps failing. Not when herakles is down: see HeraklesDown.
           expr: time() - herakles_labor_last_success_timestamp_seconds > 900
           labels: {severity: critical}
           annotations:

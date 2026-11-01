@@ -510,6 +510,20 @@ A Grafana dashboard for these series is in
 results on purpose: an unhealthy target must raise an alert, not make
 Kubernetes restart the probe.
 
+### Watching the probe
+
+herakles runs as a single replica, so the probe itself is a single point of
+failure, and a dead probe is silent: its series go stale and no rule on them
+fires, `HeraklesLaborStale` included. Watch it from one level up each time:
+
+| If this stops | This alerts | How |
+|---|---|---|
+| herakles (crash loop, pod not scheduled, scrape broken) | Prometheus | `HeraklesDown`: `absent(up{job="herakles"} == 1)` for 5 minutes, in the example rules. |
+| Prometheus or Alertmanager | Something outside the cluster | A dead man's switch: an alert that always fires, such as `Watchdog` in kube-prometheus, routed to an external service that pages when it stops arriving. |
+
+Kubernetes restarts a crashed process on its own; `HeraklesDown` covers what a
+restart does not fix.
+
 ## Logs
 
 One line per event. The fixed-width left zone (time, level, target, labor,
