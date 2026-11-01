@@ -219,6 +219,14 @@ http:
 ```
 
 - **Expected failures** use `assert.status`, which replaces the 2xx default. `assert: {status: [401, 403]}` passes only if the request is rejected. That covers "without a token the API refuses" and "a closed token no longer works".
+- **Checks for one status** go in `assert.on_status`. Some APIs answer an empty search with a 404 and a message: accept both codes, and require the message only on the 404, so a 404 from a missing route still fails.
+  ```yaml
+  assert:
+    status: [200, 404]
+    on_status:
+      404: {jsonpath: {$.message: "Patient not found"}}
+  ```
+  Each code must be one the step accepts. `on_status` only holds `jsonpath` for now.
 - **JSONPath** uses the full [JSONPath](https://goessner.net/articles/JsonPath/) syntax via [ojg](https://github.com/ohler55/ojg). A capture takes the first match. Responses used by `jsonpath` are parsed up to 1 MiB.
 - **Downloads** are streamed: the body is hashed and counted as it arrives and never kept whole in memory. The hash is computed only when `sha256` or `sha256_header` is set. See [Verifying downloads](#verifying-downloads).
 - **Error messages** include at most the first 200 bytes of the response body, with every secret masked.

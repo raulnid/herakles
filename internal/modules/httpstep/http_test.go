@@ -97,6 +97,16 @@ func TestStatusAssertions(t *testing.T) {
 		switch r.URL.Path {
 		case "/denied":
 			http.Error(w, "no token", http.StatusUnauthorized)
+		case "/patients/known":
+			_, _ = io.WriteString(w, `[{"id": 1}]`)
+		case "/patients/none":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"message": "patient not found"}`)
+		case "/patients/other":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"message": "no such route"}`)
+		case "/patients/route":
+			http.NotFound(w, r)
 		case "/broken":
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = io.WriteString(w, "line1\nline2 "+long)
@@ -106,11 +116,16 @@ func TestStatusAssertions(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	notFound := `assert: {status: [200, 404], on_status: {404: {jsonpath: {$.message: patient not found}}}}`
 	cases := []struct{ name, cfg, wantErr string }{
 		{"default accepts 2xx", "url: " + srv.URL + "/ok", ""},
 		{"expected rejection", "url: " + srv.URL + "/denied\nassert: {status: [401, 403]}", ""},
 		{"rejection did not happen", "url: " + srv.URL + "/ok\nassert: {status: [401, 403]}", "status 200, want [401 403]"},
 		{"server error", "url: " + srv.URL + "/broken", "status 500, want 2xx; body: line1 line2 xxx"},
+		{"on_status skipped for other codes", "url: " + srv.URL + "/patients/known\n" + notFound, ""},
+		{"on_status met", "url: " + srv.URL + "/patients/none\n" + notFound, ""},
+		{"on_status other message", "url: " + srv.URL + "/patients/other\n" + notFound, `assert jsonpath $.message = "no such route", want "patient not found"`},
+		{"on_status not met", "url: " + srv.URL + "/patients/route\n" + notFound, "response is not JSON"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -298,9 +313,9 @@ capture:
   both: {jsonpath: $.a, header: X}
   none: {secret: true}
   bad: {jsonpath: "$[?"}
-assert: {status: [700], jsonpath: {"$..[": 1}, sha256: abc}
+assert: {status: [700], jsonpath: {"$..[": 1}, sha256: abc, on_status: {404: {jsonpath: {"$[": 1}}}}
 `))
-	for _, want := range []string{"only one of json, text, multipart or payload", `assert sha256 "abc": want 64 hex`, `capture "both"`, `capture "none"`, `capture "bad": jsonpath`, "status 700", `assert jsonpath "$..["`} {
+	for _, want := range []string{"on_status 404: not an accepted status", `on_status 404 jsonpath "$["`, "only one of json, text, multipart or payload", `assert sha256 "abc": want 64 hex`, `capture "both"`, `capture "none"`, `capture "bad": jsonpath`, "status 700", `assert jsonpath "$..["`} {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("Validate error %v does not mention %q", err, want)
 		}

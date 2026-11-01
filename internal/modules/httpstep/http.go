@@ -53,6 +53,13 @@ type Assert struct {
 	// header (hex, base64 or RFC 9530 Content-Digest).
 	SHA256       string `yaml:"sha256"`
 	SHA256Header string `yaml:"sha256_header"`
+	// OnStatus adds checks for one accepted code only: with status [200, 404],
+	// a 404 can be required to carry the API's "not found" message.
+	OnStatus map[int]StatusAssert `yaml:"on_status"`
+}
+
+type StatusAssert struct {
+	JSONPath map[string]any `yaml:"jsonpath"`
 }
 
 type Module struct{}
@@ -104,13 +111,12 @@ func (Module) Validate(cfg any) error {
 			errs = append(errs, fmt.Errorf("assert sha256 %q: want 64 hex characters", s))
 		}
 	}
-	for path := range c.Assert.JSONPath {
-		if module.Templated(path) {
-			continue
+	errs = append(errs, validatePaths("assert", c.Assert.JSONPath)...)
+	for code, sa := range c.Assert.OnStatus {
+		if !slices.Contains(c.Assert.Status, code) && (len(c.Assert.Status) > 0 || code/100 != 2) {
+			errs = append(errs, fmt.Errorf("assert on_status %d: not an accepted status", code))
 		}
-		if _, err := compile(path); err != nil {
-			errs = append(errs, fmt.Errorf("assert jsonpath %q: %w", path, err))
-		}
+		errs = append(errs, validatePaths(fmt.Sprintf("assert on_status %d", code), sa.JSONPath)...)
 	}
 	for _, s := range c.Assert.Status {
 		if s != 0 && (s < 100 || s > 599) { // 0: templated, unknown until run time
@@ -118,6 +124,19 @@ func (Module) Validate(cfg any) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func validatePaths(where string, m map[string]any) []error {
+	var errs []error
+	for path := range m {
+		if module.Templated(path) {
+			continue
+		}
+		if _, err := compile(path); err != nil {
+			errs = append(errs, fmt.Errorf("%s jsonpath %q: %w", where, path, err))
+		}
+	}
+	return errs
 }
 
 // Run does not repeat Validate: the config was checked at startup, and a bad
@@ -182,10 +201,20 @@ func (Module) Run(ctx context.Context, cfg any, env *module.Env) module.Result {
 	return res
 }
 
+// needsJSON reports whether the body may be parsed as JSON, so it is kept.
 func (c *Config) needsJSON() bool {
-	if len(c.Assert.JSONPath) > 0 {
+	if len(c.Assert.JSONPath) > 0 || c.capturesJSON() {
 		return true
 	}
+	for _, sa := range c.Assert.OnStatus {
+		if len(sa.JSONPath) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Config) capturesJSON() bool {
 	for _, cp := range c.Capture {
 		if cp.JSONPath != "" {
 			return true
@@ -223,20 +252,23 @@ func (c *Config) check(resp *http.Response, rb *respBody) (map[string]vars.Value
 		}
 	}
 
+	onStatus := c.Assert.OnStatus[resp.StatusCode].JSONPath
 	var doc any
-	if c.needsJSON() {
+	if len(c.Assert.JSONPath) > 0 || len(onStatus) > 0 || c.capturesJSON() {
 		var err error
 		if doc, err = rb.json(); err != nil {
 			return nil, fmt.Errorf("%w%s", err, rb.excerpt())
 		}
 	}
-	for _, path := range slices.Sorted(maps.Keys(c.Assert.JSONPath)) {
-		got, err := first(doc, path)
-		if err != nil {
-			return nil, fmt.Errorf("assert %w%s", err, rb.excerpt())
-		}
-		if !jsonEqual(got, c.Assert.JSONPath[path]) {
-			return nil, fmt.Errorf("assert jsonpath %s = %s, want %s%s", path, jsonString(got), jsonString(c.Assert.JSONPath[path]), rb.excerpt())
+	for _, want := range []map[string]any{c.Assert.JSONPath, onStatus} {
+		for _, path := range slices.Sorted(maps.Keys(want)) {
+			got, err := first(doc, path)
+			if err != nil {
+				return nil, fmt.Errorf("assert %w%s", err, rb.excerpt())
+			}
+			if !jsonEqual(got, want[path]) {
+				return nil, fmt.Errorf("assert jsonpath %s = %s, want %s%s", path, jsonString(got), jsonString(want[path]), rb.excerpt())
+			}
 		}
 	}
 

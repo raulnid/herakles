@@ -206,7 +206,17 @@
           "description": "Response header holding the body's SHA-256: hex, base64, or sha-256 in Content-Digest/Repr-Digest/Digest.",
           "examples": ["Content-Digest", "Repr-Digest", "Digest", "x-amz-checksum-sha256", "X-Checksum-Sha256"]
         },
-        "size": { "anyOf": [{ "type": "integer", "minimum": 0 }, { "$ref": "#/$defs/template" }] }
+        "size": { "anyOf": [{ "type": "integer", "minimum": 0 }, { "$ref": "#/$defs/template" }] },
+        "on_status": {
+          "type": "object",
+          "description": "Extra checks applied only when the response has that status code, which must be accepted.",
+          "propertyNames": { "pattern": "^[1-5][0-9][0-9]$" },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": { "jsonpath": { "type": "object", "description": "JSONPath -> expected value.", "additionalProperties": true } }
+          }
+        }
       }
     }
   }
