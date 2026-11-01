@@ -460,7 +460,9 @@ Example alerts (failing labor, stale labor, failing cycle, slow step, slow
 transfer, certificate not renewed, error budget burn) are in
 [`examples/kubernetes/monitoring/prometheusrule.yaml`](examples/kubernetes/monitoring/prometheusrule.yaml).
 A Grafana dashboard for these series is in
-[`examples/kubernetes/monitoring/dashboard.json`](examples/kubernetes/monitoring/dashboard.json).
+[`examples/kubernetes/monitoring/dashboard.json`](examples/kubernetes/monitoring/dashboard.json):
+
+![The herakles Grafana dashboard: staging fails at login/token now and then, while dev and prod pass; mTLS client certificates are at 40% of their lifetime](docs/dashboard.png)
 
 ### Health
 
