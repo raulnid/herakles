@@ -60,7 +60,7 @@
       "gridPos": {
         "x": 0,
         "y": 0,
-        "w": 8,
+        "w": 9,
         "h": 5
       },
       "fieldConfig": {
@@ -124,7 +124,7 @@
     },
     {
       "id": 2,
-      "type": "stat",
+      "type": "bargauge",
       "title": "Success ratio, 30 days",
       "description": "Labor runs that passed over the last 30 days, skipped runs left out (herakles_labor_runs_total). Red under a 99.9% objective.",
       "datasource": {
@@ -132,16 +132,16 @@
         "uid": "${datasource}"
       },
       "gridPos": {
-        "x": 8,
-        "y": 0,
-        "w": 16,
-        "h": 5
+        "x": 14,
+        "y": 5,
+        "w": 10,
+        "h": 9
       },
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
-          "decimals": 3,
-          "min": 0,
+          "decimals": 2,
+          "min": 0.99,
           "max": 1,
           "color": {
             "mode": "thresholds"
@@ -179,9 +179,9 @@
         }
       ],
       "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "value_and_name",
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -201,8 +201,8 @@
       "gridPos": {
         "x": 0,
         "y": 5,
-        "w": 16,
-        "h": 8
+        "w": 14,
+        "h": 9
       },
       "fieldConfig": {
         "defaults": {
@@ -269,10 +269,10 @@
         "uid": "${datasource}"
       },
       "gridPos": {
-        "x": 16,
-        "y": 5,
-        "w": 8,
-        "h": 8
+        "x": 9,
+        "y": 0,
+        "w": 15,
+        "h": 5
       },
       "fieldConfig": {
         "defaults": {},
@@ -326,9 +326,9 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 13,
+        "y": 14,
         "w": 12,
-        "h": 8
+        "h": 11
       },
       "fieldConfig": {
         "defaults": {
@@ -346,7 +346,23 @@
           "expr": "herakles_step_last_duration_seconds{target=~\"$target\"}",
           "legendFormat": "{{target}} {{labor}}/{{step}}"
         }
-      ]
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 6,
@@ -359,9 +375,9 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 13,
+        "y": 14,
         "w": 12,
-        "h": 8
+        "h": 11
       },
       "fieldConfig": {
         "defaults": {
@@ -379,20 +395,36 @@
           "expr": "histogram_quantile(0.95, sum by (target, labor, step, le) (rate(herakles_step_duration_seconds_bucket{target=~\"$target\"}[$__rate_interval])))",
           "legendFormat": "{{target}} {{labor}}/{{step}}"
         }
-      ]
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "sortBy": "Last *",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 7,
       "type": "timeseries",
       "title": "Network phases",
-      "description": "Phases of the last request of each step, stacked: dns, connect, tls, wait, transfer. 0 for dns, connect and tls on a reused connection.",
+      "description": "Where the network time of a cycle goes: the last request of every step, summed by phase and stacked. dns, connect and tls are 0 on reused connections. Filter by target to see one environment.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
       },
       "gridPos": {
         "x": 0,
-        "y": 21,
+        "y": 25,
         "w": 12,
         "h": 9
       },
@@ -404,9 +436,8 @@
               "mode": "normal",
               "group": "A"
             },
-            "fillOpacity": 60,
-            "drawStyle": "bars",
-            "lineWidth": 0
+            "fillOpacity": 70,
+            "lineWidth": 1
           }
         },
         "overrides": []
@@ -418,10 +449,20 @@
             "uid": "${datasource}"
           },
           "refId": "A",
-          "expr": "herakles_http_phase_seconds{target=~\"$target\",phase!=\"total\"}",
-          "legendFormat": "{{target}} {{labor}}/{{step}} {{phase}}"
+          "expr": "sum by (phase) (herakles_step_phase_seconds{target=~\"$target\",phase!=\"total\"})",
+          "legendFormat": "{{phase}}"
         }
-      ]
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 8,
@@ -434,7 +475,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 21,
+        "y": 25,
         "w": 12,
         "h": 9
       },
@@ -467,9 +508,9 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 30,
+        "y": 34,
         "w": 24,
-        "h": 7
+        "h": 11
       },
       "fieldConfig": {
         "defaults": {
