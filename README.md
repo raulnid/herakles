@@ -36,6 +36,18 @@ phases (DNS, connect, TLS, time to first byte, transfer), and upload and
 download rates. It is designed as a long-running process with native metrics,
 not as a CLI tool that prints a report and exits.
 
+### When to use something else
+
+| Tool | Best at | herakles instead, when |
+|---|---|---|
+| [Prometheus blackbox exporter](https://github.com/prometheus/blackbox_exporter) | One request per probe: HTTP, TCP, DNS, ICMP, gRPC. | The check is a sequence: log in, carry the token, upload, read it back, clean up. |
+| [Grafana k6](https://k6.io/) | Load tests scripted in JavaScript; synthetic checks in Grafana Cloud. | You want declarative YAML, a probe that runs inside your cluster as a plain Deployment, and Prometheus metrics without a cloud service. |
+| [Checkly](https://www.checklyhq.com/) | Hosted API and browser (Playwright) checks, monitoring as code. | Targets are internal, or the data must not leave your infrastructure. |
+| [Artillery](https://www.artillery.io/) | Load tests from YAML scenarios. | You need one precise journey per cycle, not traffic volume. |
+
+These tools can be combined: blackbox for every endpoint, herakles for the
+few journeys that matter, k6 or Artillery before a release.
+
 ## Quickstart
 
 Requires Go 1.26. From the repository root, start the demo API and run one
