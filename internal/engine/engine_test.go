@@ -499,6 +499,32 @@ labors: [{name: l, steps: [{name: s, fake: {tls: true}}]}]
 	}
 }
 
+func TestCycleReportsClientCert(t *testing.T) {
+	dir := t.TempDir()
+	p := testpki.NewCA(t).Issue(t, 42, time.Now().Add(24*time.Hour))
+	for name, b := range map[string][]byte{"tls.crt": p.CertPEM, "tls.key": p.KeyPEM} {
+		if err := os.WriteFile(filepath.Join(dir, name), b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e, rec := setup(t, fmt.Sprintf(`
+targets:
+  - {name: mtls, tls: {cert_file: %[1]s/tls.crt, key_file: %[1]s/tls.key}}
+  - {name: plain}
+labors: [{name: l, steps: [{name: s, fake: {}}]}]
+`, dir))
+	e.Once(context.Background())
+	for _, c := range rec.cycles {
+		got := int64(-1)
+		if c.ClientCert != nil {
+			got = c.ClientCert.SerialNumber.Int64()
+		}
+		if want := map[string]int64{"mtls": 42, "plain": -1}[c.Target]; got != want {
+			t.Errorf("%s: client cert serial %d, want %d", c.Target, got, want)
+		}
+	}
+}
+
 func TestMissingClientCertFailsOnlyItsTarget(t *testing.T) {
 	e, rec := setup(t, `
 targets:

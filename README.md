@@ -156,7 +156,16 @@ targets:
 
 All TLS files are read again at the start of every cycle. A short-lived client
 certificate (cert-manager, step-ca) rotated on disk is used from the next cycle
-on, without a restart. `cert_file` and `key_file` go together; `validate`
+on, without a restart.
+
+In Kubernetes, mount the Secret as a volume, as the example deployment does.
+The kubelet updates the files of a mounted Secret in the running pod, usually
+within a minute or two, so no restart and no reloader are needed. That does not
+hold for a Secret in an environment variable or mounted with `subPath`: those
+never change until the pod restarts. The kubelet swaps the files atomically,
+but cert and key are two reads: a cycle that lands exactly on the swap can fail
+once with a key mismatch, and the next one loads the new pair. cert-manager
+renews at two thirds of the lifetime, so the old pair is still valid meanwhile. `cert_file` and `key_file` go together; `validate`
 checks that, but not that the files exist. If a file is missing or does not
 load, the cycle of that target fails (`herakles_cycle_success` 0, the error
 with the file path in the log) and every other target keeps running, so a
@@ -352,6 +361,8 @@ All metrics are prefixed `herakles_` and labeled `target`, plus `labor`,
 | `transfer_bytes_per_second` | gauge | target, labor, step, direction | Rate of the last `upload` or `download`. |
 | `tls_cert_expiry_timestamp_seconds` | gauge | target, labor, step | Earliest `NotAfter` in the server certificate chain, set by steps that got a TLS response, reused connections included. |
 | `tls_cert_not_before_timestamp_seconds` | gauge | target, labor, step | `NotBefore` of that same certificate. With the expiry it gives the lifetime, for alerts relative to it. |
+| `tls_client_cert_expiry_timestamp_seconds` | gauge | target | `NotAfter` of the target's mTLS client certificate, as loaded in the last cycle. If it stops loading, the last value stays, so the alert still fires before it expires. |
+| `tls_client_cert_not_before_timestamp_seconds` | gauge | target | `NotBefore` of the client certificate. |
 | `labor_runs_total` | counter | target, labor, result | Labor runs by `result`: `ok`, `failed` or `skipped`. The SLO metric. |
 | `step_runs_total` | counter | target, labor, step, result | Step attempts by `result`. For diagnosis: which step burns the budget. |
 | `build_info` | gauge | version, goversion | Always 1. Shows which herakles version runs where: `herakles_build_info{version!="0.2.0"}`. |
@@ -377,6 +388,10 @@ That is `HeraklesCertNotRenewed` in the example rules: 8 hours left for a
 24-hour certificate, 30 days for a 90-day one. If you renew on another
 schedule, change the `/ 3`. Every cycle opens new connections, so a renewed
 server certificate shows up in the next cycle.
+
+`HeraklesClientCertNotRenewed` applies the same rule to the mTLS client
+certificate of each target (`herakles_tls_client_cert_*`). It catches both a
+renewal that failed and a renewed Secret that never reached the pod.
 
 ### SLOs: counters next to gauges
 

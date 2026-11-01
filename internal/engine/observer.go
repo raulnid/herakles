@@ -48,6 +48,8 @@ type CycleReport struct {
 	OK       bool
 	Err      error // variable resolution error, if any
 	Duration time.Duration
+	// ClientCert is the target's mTLS client certificate as loaded this cycle, or nil.
+	ClientCert *x509.Certificate
 }
 
 // Observer receives engine events. Implementations must be safe for

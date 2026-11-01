@@ -80,7 +80,11 @@ func (e *Engine) cycle(ctx context.Context, t config.Target) bool {
 			ok = false
 		}
 	}
-	e.obs.CycleEnd(CycleReport{Target: t.Name, OK: ok, Duration: time.Since(start)})
+	rep := CycleReport{Target: t.Name, OK: ok, Duration: time.Since(start)}
+	if certs := client.Transport.(*http.Transport).TLSClientConfig.Certificates; len(certs) > 0 {
+		rep.ClientCert = certs[0].Leaf // parsed by LoadX509KeyPair
+	}
+	e.obs.CycleEnd(rep)
 	return ok
 }
 

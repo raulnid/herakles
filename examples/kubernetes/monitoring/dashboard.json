@@ -460,7 +460,7 @@
       "id": 9,
       "type": "bargauge",
       "title": "Certificate lifetime left",
-      "description": "Share of its lifetime each certificate has left: the first to expire in the server chain each step saw. Red under a third, as the HeraklesCertNotRenewed alert: renewal (at two thirds with cert-manager) did not happen. Works the same for 24-hour and 90-day certificates.",
+      "description": "Share of its lifetime each certificate has left: the first to expire in the server chain each step saw, and the mTLS client certificate of each target. Red under a third, as the HeraklesCertNotRenewed alert: renewal (at two thirds with cert-manager) did not happen. Works the same for 24-hour and 90-day certificates.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -509,6 +509,16 @@
           "refId": "A",
           "expr": "(herakles_tls_cert_expiry_timestamp_seconds{target=~\"$target\"} - time()) / (herakles_tls_cert_expiry_timestamp_seconds{target=~\"$target\"} - herakles_tls_cert_not_before_timestamp_seconds{target=~\"$target\"})",
           "legendFormat": "{{target}} {{labor}}/{{step}}",
+          "instant": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "refId": "B",
+          "expr": "(herakles_tls_client_cert_expiry_timestamp_seconds{target=~\"$target\"} - time()) / (herakles_tls_client_cert_expiry_timestamp_seconds{target=~\"$target\"} - herakles_tls_client_cert_not_before_timestamp_seconds{target=~\"$target\"})",
+          "legendFormat": "{{target}} client cert (mTLS)",
           "instant": true
         }
       ],

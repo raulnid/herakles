@@ -26,7 +26,9 @@ func TestSeries(t *testing.T) {
 	m.LaborEnd(engine.LaborReport{Target: "dev", Labor: "projects", Status: engine.Failed, FailedStep: "download",
 		Duration: 2 * time.Second, Steps: []string{"upload", "download", "cleanup"}})
 	m.LaborEnd(engine.LaborReport{Target: "dev", Labor: "after", Status: engine.Skipped})
-	m.CycleEnd(engine.CycleReport{Target: "dev", OK: false})
+	m.CycleEnd(engine.CycleReport{Target: "dev", OK: false,
+		ClientCert: &x509.Certificate{NotBefore: time.Unix(1893369600, 0), NotAfter: time.Unix(1893456000, 0)}})
+	m.CycleEnd(engine.CycleReport{Target: "prod", OK: true})
 
 	want := `
 # HELP herakles_step_success 1 if the last attempt of the step passed, 0 if it failed. Includes optional steps.
@@ -66,10 +68,18 @@ herakles_tls_cert_not_before_timestamp_seconds{labor="projects",step="download",
 # HELP herakles_cycle_success 1 if every required step of the last cycle passed. 0 also when variables could not be resolved.
 # TYPE herakles_cycle_success gauge
 herakles_cycle_success{target="dev"} 0
+herakles_cycle_success{target="prod"} 1
+# HELP herakles_tls_client_cert_expiry_timestamp_seconds Unix time of the NotAfter of the target's mTLS client certificate, as loaded in the last cycle.
+# TYPE herakles_tls_client_cert_expiry_timestamp_seconds gauge
+herakles_tls_client_cert_expiry_timestamp_seconds{target="dev"} 1.893456e+09
+# HELP herakles_tls_client_cert_not_before_timestamp_seconds NotBefore of the target's mTLS client certificate.
+# TYPE herakles_tls_client_cert_not_before_timestamp_seconds gauge
+herakles_tls_client_cert_not_before_timestamp_seconds{target="dev"} 1.8933696e+09
 `
 	names := []string{"herakles_step_success", "herakles_step_skipped", "herakles_step_last_duration_seconds", "herakles_step_phase_seconds",
 		"herakles_transfer_bytes_per_second", "herakles_labor_success", "herakles_labor_failed_step", "herakles_cycle_success",
-		"herakles_tls_cert_expiry_timestamp_seconds", "herakles_tls_cert_not_before_timestamp_seconds"}
+		"herakles_tls_cert_expiry_timestamp_seconds", "herakles_tls_cert_not_before_timestamp_seconds",
+		"herakles_tls_client_cert_expiry_timestamp_seconds", "herakles_tls_client_cert_not_before_timestamp_seconds"}
 	if err := testutil.GatherAndCompare(reg, strings.NewReader(want), names...); err != nil {
 		t.Error(err)
 	}

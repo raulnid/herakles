@@ -32,6 +32,8 @@ type Metrics struct {
 	cycleSuccess     *prometheus.GaugeVec
 	certExpiry       *prometheus.GaugeVec
 	certNotBefore    *prometheus.GaugeVec
+	clientExpiry     *prometheus.GaugeVec
+	clientNotBefore  *prometheus.GaugeVec
 	stepRuns         *prometheus.CounterVec
 	laborRuns        *prometheus.CounterVec
 }
@@ -74,6 +76,8 @@ func New(reg prometheus.Registerer) *Metrics {
 		laborRuns:        counter("labor_runs_total", "Labor runs by result: ok, failed or skipped.", labor...),
 		certExpiry:       gauge("tls_cert_expiry_timestamp_seconds", "Unix time of the earliest NotAfter in the server certificate chain seen by the step.", step...),
 		certNotBefore:    gauge("tls_cert_not_before_timestamp_seconds", "NotBefore of the same certificate: with the expiry, its lifetime.", step...),
+		clientExpiry:     gauge("tls_client_cert_expiry_timestamp_seconds", "Unix time of the NotAfter of the target's mTLS client certificate, as loaded in the last cycle.", "target"),
+		clientNotBefore:  gauge("tls_client_cert_not_before_timestamp_seconds", "NotBefore of the target's mTLS client certificate.", "target"),
 	}
 }
 
@@ -123,6 +127,11 @@ func (m *Metrics) LaborEnd(r engine.LaborReport) {
 
 func (m *Metrics) CycleEnd(r engine.CycleReport) {
 	m.cycleSuccess.WithLabelValues(r.Target).Set(bool01(r.OK))
+	// A cert that stops loading keeps its last values, so the alert still fires as it nears expiry.
+	if c := r.ClientCert; c != nil {
+		m.clientExpiry.WithLabelValues(r.Target).Set(float64(c.NotAfter.Unix()))
+		m.clientNotBefore.WithLabelValues(r.Target).Set(float64(c.NotBefore.Unix()))
+	}
 }
 
 // count increments the series of status and creates the other results at 0:

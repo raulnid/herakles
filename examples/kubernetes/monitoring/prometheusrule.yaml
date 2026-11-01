@@ -60,6 +60,16 @@ spec:
           labels: {severity: warning}
           annotations:
             summary: "A certificate served to {{ $labels.labor }}/{{ $labels.step }} on {{ $labels.target }} was not renewed: it expires in {{ $value | humanizeDuration }}"
+        - alert: HeraklesClientCertNotRenewed
+          # Same rule for the mTLS client certificate herakles loads from disk
+          # every cycle: the Secret was not renewed, or not synced into the pod.
+          expr: |
+            herakles_tls_client_cert_expiry_timestamp_seconds - time()
+              < (herakles_tls_client_cert_expiry_timestamp_seconds - herakles_tls_client_cert_not_before_timestamp_seconds) / 3
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: "The mTLS client certificate of {{ $labels.target }} was not renewed: it expires in {{ $value | humanizeDuration }}"
 
     # SLO on the user journey: 99.9% of labor runs pass over 30 days.
     # Multiwindow burn rate (Google SRE workbook): 14.4x over 1h/5m pages for
