@@ -157,4 +157,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PRERELEASE: ${{ contains(github.ref_name, '-') }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --prerelease="$PRERELEASE"
+        # The annotation of the tag (breaking changes, upgrade notes) goes
+        # before the generated notes. checkout leaves tags lightweight, so fetch it again.
+        run: |
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          git tag -l --format='%(if:equals=tag)%(objecttype)%(then)%(contents)%(end)' "$GITHUB_REF_NAME" > notes.md
+          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --notes-file notes.md --prerelease="$PRERELEASE"

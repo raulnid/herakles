@@ -41,10 +41,10 @@ herakles_step_skipped{labor="projects",step="upload",target="prod"} 1
 # TYPE herakles_step_last_duration_seconds gauge
 herakles_step_last_duration_seconds{labor="projects",step="download",target="dev"} 0.003
 herakles_step_last_duration_seconds{labor="projects",step="upload",target="dev"} 1.5
-# HELP herakles_http_phase_seconds Phases of the last network request of the step: dns, connect, tls, wait, transfer, total.
-# TYPE herakles_http_phase_seconds gauge
-herakles_http_phase_seconds{labor="projects",phase="tls",step="upload",target="dev"} 0
-herakles_http_phase_seconds{labor="projects",phase="wait",step="upload",target="dev"} 0.02
+# HELP herakles_step_phase_seconds Phases of the last network request of the step: dns, connect, tls, wait, transfer, total.
+# TYPE herakles_step_phase_seconds gauge
+herakles_step_phase_seconds{labor="projects",phase="tls",step="upload",target="dev"} 0
+herakles_step_phase_seconds{labor="projects",phase="wait",step="upload",target="dev"} 0.02
 # HELP herakles_transfer_bytes_per_second Rate of the last upload or download of the step.
 # TYPE herakles_transfer_bytes_per_second gauge
 herakles_transfer_bytes_per_second{direction="upload",labor="projects",step="upload",target="dev"} 6.291456e+06
@@ -63,7 +63,7 @@ herakles_tls_cert_expiry_timestamp_seconds{labor="projects",step="download",targ
 # TYPE herakles_cycle_success gauge
 herakles_cycle_success{target="dev"} 0
 `
-	names := []string{"herakles_step_success", "herakles_step_skipped", "herakles_step_last_duration_seconds", "herakles_http_phase_seconds",
+	names := []string{"herakles_step_success", "herakles_step_skipped", "herakles_step_last_duration_seconds", "herakles_step_phase_seconds",
 		"herakles_transfer_bytes_per_second", "herakles_labor_success", "herakles_labor_failed_step", "herakles_cycle_success",
 		"herakles_tls_cert_expiry_timestamp_seconds"}
 	if err := testutil.GatherAndCompare(reg, strings.NewReader(want), names...); err != nil {

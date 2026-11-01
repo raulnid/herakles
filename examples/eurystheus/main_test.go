@@ -97,7 +97,7 @@ func TestExampleJourney(t *testing.T) {
 	if v := value(t, reg, "herakles_transfer_bytes_per_second", map[string]string{"target": "dev", "step": "upload", "direction": "upload"}); v <= 0 {
 		t.Errorf("upload rate = %v", v)
 	}
-	if n := testutil.CollectAndCount(reg, "herakles_http_phase_seconds"); n == 0 {
+	if n := testutil.CollectAndCount(reg, "herakles_step_phase_seconds"); n == 0 {
 		t.Error("no http phase series")
 	}
 	if len(mock.projects) != 0 || len(mock.sessions) != 0 {

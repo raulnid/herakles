@@ -418,7 +418,7 @@
             "uid": "${datasource}"
           },
           "refId": "A",
-          "expr": "herakles_http_phase_seconds{target=~\"$target\",phase!=\"total\"}",
+          "expr": "herakles_step_phase_seconds{target=~\"$target\",phase!=\"total\"}",
           "legendFormat": "{{target}} {{labor}}/{{step}} {{phase}}"
         }
       ]

@@ -27,7 +27,7 @@ type Metrics struct {
 	laborDuration    *prometheus.HistogramVec
 	laborLastDur     *prometheus.GaugeVec
 	laborFailedStep  *prometheus.GaugeVec
-	httpPhase        *prometheus.GaugeVec
+	stepPhase        *prometheus.GaugeVec
 	transferRate     *prometheus.GaugeVec
 	cycleSuccess     *prometheus.GaugeVec
 	certExpiry       *prometheus.GaugeVec
@@ -66,7 +66,7 @@ func New(reg prometheus.Registerer) *Metrics {
 		laborDuration:    hist("labor_duration_seconds", "Duration of each labor run, finally included.", labor...),
 		laborLastDur:     gauge("labor_last_duration_seconds", "Exact duration of the last run of the labor.", labor...),
 		laborFailedStep:  gauge("labor_failed_step", "1 on the required step that failed the last run of the labor, 0 on the others.", step...),
-		httpPhase:        gauge("http_phase_seconds", "Phases of the last network request of the step: dns, connect, tls, wait, transfer, total.", append(step, "phase")...),
+		stepPhase:        gauge("step_phase_seconds", "Phases of the last network request of the step: dns, connect, tls, wait, transfer, total.", append(step, "phase")...),
 		transferRate:     gauge("transfer_bytes_per_second", "Rate of the last upload or download of the step.", append(step, "direction")...),
 		cycleSuccess:     gauge("cycle_success", "1 if every required step of the last cycle passed. 0 also when variables could not be resolved.", "target"),
 		stepRuns:         counter("step_runs_total", "Step attempts by result: ok, failed or skipped.", step...),
@@ -89,7 +89,7 @@ func (m *Metrics) StepEnd(r engine.StepReport) {
 	m.stepLastDuration.With(l).Set(r.Duration.Seconds())
 	m.stepSuccess.With(l).Set(bool01(r.Status == engine.OK))
 	for phase, d := range r.Phases {
-		m.httpPhase.WithLabelValues(r.Target, r.Labor, r.Step, phase).Set(d.Seconds())
+		m.stepPhase.WithLabelValues(r.Target, r.Labor, r.Step, phase).Set(d.Seconds())
 	}
 	for _, t := range r.Transfers {
 		m.transferRate.WithLabelValues(r.Target, r.Labor, r.Step, t.Direction).Set(t.BytesPerSecond())

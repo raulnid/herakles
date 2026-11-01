@@ -278,7 +278,7 @@ brokers, SMTP, LDAPS.
 ```
 
 It reports the `dns`, `connect`, `tls` and `total` phases in
-`herakles_http_phase_seconds`, and with `tls: true` the certificate expiry in
+`herakles_step_phase_seconds`, and with `tls: true` the certificate expiry in
 `herakles_tls_cert_expiry_timestamp_seconds`, so expiry alerts also cover
 non-HTTP services. It sends no data: a TLS service that needs STARTTLS (SMTP
 on 587, PostgreSQL) is checked at the TCP level only.
@@ -348,7 +348,7 @@ All metrics are prefixed `herakles_` and labeled `target`, plus `labor`,
 | `labor_duration_seconds` | histogram | target, labor | Duration of every labor run, finally included. |
 | `labor_last_duration_seconds` | gauge | target, labor | Exact duration of the last run. |
 | `labor_failed_step` | gauge | target, labor, step | 1 on the required step that failed the last run, 0 on the others. |
-| `http_phase_seconds` | gauge | target, labor, step, phase | Phases of the last HTTP request: `dns`, `connect`, `tls`, `wait` (request sent to first byte), `transfer`, `total`. On a reused connection `dns`, `connect` and `tls` are 0. The `tcp` module reports `dns`, `connect`, `tls` and `total` here too; the name predates it. |
+| `step_phase_seconds` | gauge | target, labor, step, phase | Phases of the last network request of the step. `http`: `dns`, `connect`, `tls`, `wait` (request sent to first byte), `transfer`, `total`; on a reused connection `dns`, `connect` and `tls` are 0. `tcp`: `dns`, `connect`, `tls`, `total`. Named `http_phase_seconds` before v0.3.0. |
 | `transfer_bytes_per_second` | gauge | target, labor, step, direction | Rate of the last `upload` or `download`. |
 | `tls_cert_expiry_timestamp_seconds` | gauge | target, labor, step | Earliest `NotAfter` in the server certificate chain, set by steps that got a TLS response, reused connections included. Days left: `(herakles_tls_cert_expiry_timestamp_seconds - time()) / 86400`. |
 | `labor_runs_total` | counter | target, labor, result | Labor runs by `result`: `ok`, `failed` or `skipped`. The SLO metric. |
@@ -420,7 +420,7 @@ latency, use the exact last-value gauges, and for percentiles over time:
 
 ```promql
 quantile_over_time(0.95, herakles_step_last_duration_seconds{target="prod"}[1h])
-quantile_over_time(0.95, herakles_http_phase_seconds{phase="wait"}[1h])
+quantile_over_time(0.95, herakles_step_phase_seconds{phase="wait"}[1h])
 ```
 
 Example alerts (failing labor, stale labor, failing cycle, slow step, slow
@@ -569,7 +569,7 @@ It applies the timeout through `ctx`, measures the duration, and turns the
 |---|---|
 | `Err` | Step failure. Secrets are masked before logging. |
 | `Captured` | Variables for later steps (`vars.Value{Raw, Secret}`). |
-| `Phases` | `herakles_http_phase_seconds{phase=...}`. |
+| `Phases` | `herakles_step_phase_seconds{phase=...}`. |
 | `Transfers` | `herakles_transfer_bytes_per_second{direction=...}`. |
 | `CertExpiry` | `herakles_tls_cert_expiry_timestamp_seconds`. Fill it with `module.CertExpiry(&connState)`. |
 
