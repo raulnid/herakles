@@ -4,7 +4,7 @@
 #   docker build --target eurystheus -t herakles-eurystheus .
 # Both are a static binary on distroless, running as a non-root user.
 
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS base
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS base
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
